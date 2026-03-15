@@ -55,6 +55,7 @@ func initPlugins() {
 		plugins.NewDownloadLimit(),
 		plugins.NewBaiduCloudTransfer(),
 		plugins.NewQuarkCloudTransfer(),
+		plugins.NewAISeoPlugin(),
 	)
 
 }
