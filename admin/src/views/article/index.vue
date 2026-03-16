@@ -1,15 +1,21 @@
 <template>
-    <Table modelName="article" :columns="columns" order="id desc" postWidth="98%" postHeight="96%" formLayout="vertical" :postComponent="postComponent" />
+    <Table modelName="article" :columns="columns" :categoryTree="categoryTreeData" order="id desc" postWidth="98%" postHeight="96%" formLayout="vertical" :postComponent="postComponent" />
 </template>
 
 <script setup>
   import {shallowRef} from 'vue'
+  import {useRequest} from "vue-request";
   import Table from '@/components/dataTable/index.vue'
   import { searchFilter } from '@/components/dataTable/index.js'
   import Post from './Post.vue'
   import {t} from '@/locale'
+  import {categoryTree as fetchCategoryTree} from "@/api/index.js"
 
   const postComponent = shallowRef(Post);
+  
+  // 获取分类树数据
+  const {data:categoryTreeData} = useRequest(fetchCategoryTree)
+  
   const columns = [
     {
       title: t('id'),
@@ -43,6 +49,7 @@
       width: 100,
       ellipsis:true,
       filterable: searchFilter,
+      slotName:'category',
       align:'right',
     },
     {
@@ -57,7 +64,7 @@
       title: t('status'),
       dataIndex: 'status',
       slotName:'articleStatus',
-      width: 100,
+      width: 60,
       align:'center',
     },
     {

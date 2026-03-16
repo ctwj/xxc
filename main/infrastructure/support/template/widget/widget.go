@@ -11,6 +11,7 @@ import (
 	"moss/domain/core/service"
 	coreUtils "moss/domain/core/utils"
 	"moss/infrastructure/general/constant"
+	"moss/infrastructure/persistent/db"
 	"moss/infrastructure/support/log"
 )
 
@@ -86,6 +87,8 @@ func (w *Widget) simpleList(opt *entity.TemplateList) (res []coreEntity.ArticleB
 	}
 	var err error
 	var ctx = context.NewContextWithComment(opt.Limit, opt.Order, "Widget.simpleList")
+	// 添加状态过滤，只显示已发布的文章
+	ctx.Where = &context.Where{Field: "status", Operator: context.WhereOperatorEqualTrue}
 	if len(opt.CategoryIds) > 0 {
 		res, err = service.Article.ListByCategoryIds(ctx, opt.CategoryIds)
 	} else {
@@ -142,13 +145,16 @@ func (w *Widget) CategoryPageList(categoryID, pageNumber int) (res PageListResul
 	// 查询数据函数
 	var listFun = func() (any, int) {
 		ctx := &context.Context{Limit: opt.Limit, Order: opt.Order, Page: pageNumber, FastOffset: fastOffset, Comment: "Widget.CategoryPageList"}
+		// 添加状态过滤，只显示已发布的文章
+		ctx.Where = &context.Where{Field: "status", Operator: context.WhereOperatorEqualTrue}
 		list, err := service.Article.ListByCategoryIDWithDetail(ctx, categoryID)
 		log.ErrorShortcut("template widget error", err)
 		return list, len(list)
 	}
 	// 统计总数函数
 	var countFun = func() (res int64) {
-		res, err := service.Article.CountByCategoryID(categoryID)
+		// 使用原生SQL同时过滤分类ID和状态
+		err := db.DB.Model(&coreEntity.ArticleBase{}).Where("category_id = ? AND status = ?", categoryID, true).Count(&res).Error
 		log.ErrorShortcut("template widget error", err)
 		return
 	}
@@ -159,18 +165,25 @@ func (w *Widget) CategoryPageList(categoryID, pageNumber int) (res PageListResul
 func (w *Widget) TagPageList(tagID, pageNumber int) (res PageListResult) {
 	// 查询数据函数
 	var listFun = func() (any, int) {
-		list, err := service.Article.ListByTagID(&context.Context{
+		ctx := &context.Context{
 			Limit:   config.Config.Template.TagPageList.Limit,
 			Order:   "id desc",
 			Page:    pageNumber,
 			Comment: "Widget.TagPageList",
-		}, tagID)
+		}
+		// 添加状态过滤，只显示已发布的文章
+		ctx.Where = &context.Where{Field: "status", Operator: context.WhereOperatorEqualTrue}
+		list, err := service.Article.ListByTagID(ctx, tagID)
 		log.ErrorShortcut("template widget error", err)
 		return list, len(list)
 	}
 	// 统计总数函数
 	var countFun = func() (res int64) {
-		res, err := service.Mapping.CountByTagID(tagID)
+		// 使用原生SQL同时过滤标签ID和文章状态
+		err := db.DB.Table("mapping_tag").
+			Joins("INNER JOIN article ON mapping_tag.article_id = article.id").
+			Where("mapping_tag.tag_id = ? AND article.status = ?", tagID, true).
+			Count(&res).Error
 		log.ErrorShortcut("template widget error", err)
 		return
 	}

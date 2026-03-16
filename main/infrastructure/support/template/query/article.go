@@ -35,7 +35,10 @@ func (a *Article) context() *context.Context {
 	if a.limit == 0 {
 		a.limit = 20 // 强制限制数量
 	}
-	return context.NewContextWithComment(a.limit, a.order, a.comment)
+	ctx := context.NewContextWithComment(a.limit, a.order, a.comment)
+	// 添加状态过滤，只显示已发布的文章
+	ctx.Where = &context.Where{Field: "status", Operator: context.WhereOperatorEqualTrue}
+	return ctx
 }
 
 // Get by id

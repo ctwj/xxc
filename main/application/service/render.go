@@ -8,6 +8,7 @@ import (
 	"moss/domain/core/entity"
 	coreCtx "moss/domain/core/repository/context"
 	"moss/domain/core/service"
+	"moss/infrastructure/persistent/db"
 	"moss/infrastructure/support/log"
 	"moss/infrastructure/support/template"
 	"net/url"
@@ -44,12 +45,19 @@ func (r *RenderService) Search(keyword string, page int) (_ []byte, err error) {
 		Order:   "id desc",
 		Page:    page,
 		Comment: "Render.Search",
+		// 添加状态过滤，只搜索已发布的文章
+		Where:   &coreCtx.Where{Field: "status", Operator: coreCtx.WhereOperatorEqualTrue},
 	}
 	list, err := service.Article.ListByKeyword(ctx, keyword)
 	if err != nil {
 		return nil, err
 	}
-	count, err := service.Article.CountByKeyword(keyword)
+	// 使用原生 SQL 进行统计，同时过滤 keyword 和 status
+	like := "%" + keyword + "%"
+	var count int64
+	err = db.DB.Model(&entity.ArticleBase{}).
+		Where("(title like ? or description like ?) and status = ?", like, like, true).
+		Count(&count).Error
 	if err != nil {
 		return nil, err
 	}
@@ -87,6 +95,10 @@ func (r *RenderService) ArticleBySlug(slug string) (_ []byte, err error) {
 	item, err := service.Article.GetBySlug(slug)
 	if err != nil {
 		return
+	}
+	// 检查文章状态，未发布的文章禁止访问
+	if !item.Status {
+		return nil, errors.New("article not published")
 	}
 	return r.Article(item)
 }
