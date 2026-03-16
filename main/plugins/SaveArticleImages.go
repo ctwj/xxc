@@ -98,6 +98,28 @@ type SaveArticleImages struct {
 	wg             sync.WaitGroup              // 等待组
 	uploadResults  map[string]*uploadResult   // 上传结果映射
 	resultMutex    sync.Mutex                 // 结果映射互斥锁
+
+	// 水印配置
+	WatermarkEnable      bool   `json:"watermark_enable"`       // 是否启用水印
+	WatermarkType        string `json:"watermark_type"`         // 水印类型: text/image
+	WatermarkPosition    string `json:"watermark_position"`     // 水印位置
+	WatermarkOpacity     int    `json:"watermark_opacity"`      // 透明度 (0-100), 100为不透明
+	WatermarkMargin      int    `json:"watermark_margin"`       // 边距(像素)
+	WatermarkTileSpacing int    `json:"watermark_tile_spacing"` // 平铺间距(像素)
+
+	// 文字水印配置
+	WatermarkText       string `json:"watermark_text"`        // 水印文字
+	WatermarkFontSize   int    `json:"watermark_font_size"`   // 字体大小(像素)
+	WatermarkFontColor  string `json:"watermark_font_color"`  // 字体颜色
+	WatermarkTextRotate int    `json:"watermark_text_rotate"` // 旋转角度(度)
+
+	// 图片水印配置
+	WatermarkImagePath   string `json:"watermark_image_path"`   // 水印图片路径
+	WatermarkImageScale  int    `json:"watermark_image_scale"`  // 缩放比例 (0-100)
+	WatermarkImageRotate int    `json:"watermark_image_rotate"` // 旋转角度(度)
+
+	// 水印图片缓存
+	watermarkImageData []byte // 缓存的水印图片数据
 }
 
 func NewSaveArticleImages() *SaveArticleImages {
@@ -123,6 +145,19 @@ func NewSaveArticleImages() *SaveArticleImages {
 		APIRateLimitPerMinute: 20,  // 默认每分钟20次
 		APIMaxQueueSize:   1000,   // 默认队列最大1000个任务
 		APIQueueTimeout:   300,    // 默认队列超时5分钟
+
+		// 水印配置默认值
+		WatermarkEnable:      false,
+		WatermarkType:        "text",
+		WatermarkPosition:    "bottom_right",
+		WatermarkOpacity:     70,
+		WatermarkMargin:      10,
+		WatermarkTileSpacing: 100,
+		WatermarkFontSize:    20,
+		WatermarkFontColor:   "#FFFFFF",
+		WatermarkTextRotate:  0,
+		WatermarkImageScale:  20,
+		WatermarkImageRotate: 0,
 	}
 }
 
@@ -149,6 +184,14 @@ func (s *SaveArticleImages) Load(ctx *pluginEntity.Plugin) error {
 
 	if err := s.initUploadQueue(); err != nil {
 		return fmt.Errorf("init upload queue failed: %w", err)
+	}
+
+	// 初始化水印图片(如果启用了图片水印)
+	if s.WatermarkEnable && s.WatermarkType == "image" && s.WatermarkImagePath != "" {
+		if _, err := s.loadWatermarkImage(); err != nil {
+			s.ctx.Log.Warn("init watermark image failed", zap.Error(err))
+			// 加载失败不影响插件启动,只记录警告
+		}
 	}
 
 	return nil
@@ -259,6 +302,15 @@ func (s *SaveArticleImages) eachSave(item *entity.Article) func(i int, sn *goque
 			imageType.MIME.Value = "image/jpeg"
 			resized = true
 		}
+
+		// 添加水印
+		if s.WatermarkEnable {
+			if file, err = s.applyWatermark(file); err != nil {
+				s.ctx.Log.Warn("apply watermark failed", s.logInfo(item, src, err)...)
+				// 水印添加失败不影响图片上传,使用原图继续
+			}
+		}
+
 		// 上传图片
 		hashSrc := cryptor.Md5String(src)
 		uploadURL, err := s.uploadFile(hashSrc, imageType.Extension, imageType.MIME.Value, file)
@@ -780,6 +832,9 @@ func (s *SaveArticleImages) Unload() error {
 	// 清理未完成的任务
 	close(s.uploadQueue)
 
+	// 清理水印图片缓存
+	s.watermarkImageData = nil
+
 	s.ctx.Log.Info("SaveArticleImages plugin unloaded")
 	return nil
 }
@@ -801,4 +856,123 @@ func (s *SaveArticleImages) GetQueueStats() map[string]interface{} {
 	}
 
 	return stats
+}
+
+// applyWatermark 对图片应用水印
+func (s *SaveArticleImages) applyWatermark(file []byte) ([]byte, error) {
+	if !s.WatermarkEnable {
+		return file, nil
+	}
+
+	// 构建水印配置
+	watermarkConfig := &imagex.WatermarkConfig{
+		Enabled:     true,
+		Position:    imagex.WatermarkPosition(s.WatermarkPosition),
+		Opacity:     float64(s.WatermarkOpacity) / 100.0,
+		Margin:      s.WatermarkMargin,
+		TileSpacing: s.WatermarkTileSpacing,
+	}
+
+	// 根据类型设置水印
+	switch s.WatermarkType {
+	case "text":
+		if s.WatermarkText == "" {
+			return file, nil
+		}
+		watermarkConfig.Type = imagex.WatermarkTypeText
+		return imagex.New().
+			SetWatermarkConfig(watermarkConfig).
+			SetTextWatermark(s.WatermarkText, s.WatermarkFontSize, s.WatermarkFontColor, s.WatermarkTextRotate).
+			AddWatermarkByte(file)
+
+	case "image":
+		if s.WatermarkImagePath == "" {
+			return file, nil
+		}
+		// 加载水印图片
+		watermarkImageData, err := s.loadWatermarkImage()
+		if err != nil {
+			s.ctx.Log.Warn("load watermark image failed", zap.Error(err))
+			return file, nil
+		}
+		if len(watermarkImageData) == 0 {
+			return file, nil
+		}
+
+		watermarkConfig.Type = imagex.WatermarkTypeImage
+		scaleRatio := float64(s.WatermarkImageScale) / 100.0
+		return imagex.New().
+			SetWatermarkConfig(watermarkConfig).
+			SetImageWatermark(watermarkImageData, scaleRatio, s.WatermarkImageRotate).
+			AddWatermarkByte(file)
+
+	default:
+		return file, nil
+	}
+}
+
+// loadWatermarkImage 加载水印图片
+func (s *SaveArticleImages) loadWatermarkImage() ([]byte, error) {
+	// 如果已经缓存,直接返回
+	if len(s.watermarkImageData) > 0 {
+		return s.watermarkImageData, nil
+	}
+
+	// 检查配置的路径
+	if s.WatermarkImagePath == "" {
+		return nil, errors.New("watermark image path is empty")
+	}
+
+	// 尝试从本地文件系统加载
+	// 支持相对路径和绝对路径
+	var data []byte
+	var err error
+
+	// 检查是否是 HTTP/HTTPS URL
+	if strings.HasPrefix(s.WatermarkImagePath, "http://") || strings.HasPrefix(s.WatermarkImagePath, "https://") {
+		// 从远程 URL 加载
+		data, err = request.New().GetBody(s.WatermarkImagePath)
+		if err != nil {
+			s.ctx.Log.Warn("download watermark image from url failed", zap.Error(err), zap.String("url", s.WatermarkImagePath))
+			return nil, err
+		}
+	} else {
+		// 从本地文件加载
+		// 尝试从多个可能的路径加载
+		possiblePaths := []string{
+			s.WatermarkImagePath,                    // 直接使用配置的路径
+			"./" + s.WatermarkImagePath,             // 相对路径
+			"../" + s.WatermarkImagePath,            // 上级目录
+			"../../" + s.WatermarkImagePath,         // 上上级目录
+			"main/resources/plugins/watermark/" + s.WatermarkImagePath, // 默认水印目录
+		}
+
+		for _, path := range possiblePaths {
+			data, err = request.New().GetBody("file://" + path)
+			if err == nil && len(data) > 0 {
+				break
+			}
+		}
+
+		if err != nil || len(data) == 0 {
+			s.ctx.Log.Warn("load watermark image from local failed", zap.Error(err), zap.String("path", s.WatermarkImagePath))
+			return nil, err
+		}
+	}
+
+	// 验证是否是有效的图片
+	imageType, err := filetype.Image(data)
+	if imageType == types.Unknown || err != nil {
+		s.ctx.Log.Warn("watermark file is not a valid image", zap.Error(err))
+		return nil, errors.New("watermark file is not a valid image")
+	}
+
+	// 缓存水印图片数据
+	s.watermarkImageData = data
+
+	s.ctx.Log.Info("watermark image loaded successfully",
+		zap.String("path", s.WatermarkImagePath),
+		zap.Int("size", len(data)))
+
+	return data, nil
 }

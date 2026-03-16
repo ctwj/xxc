@@ -19,6 +19,13 @@
     </a-select>
   </a-form-item>
 
+  <a-form-item label="启用水印">
+    <a-switch type="round" v-model="data.watermark_enable">
+      <template #checked>启用</template>
+      <template #unchecked>禁用</template>
+    </a-switch>
+  </a-form-item>
+
   <template v-if="data.enable_on_create || data.enable_on_update">
 
   <a-divider class="w-full" style="margin-top:0" />
@@ -126,7 +133,75 @@
       </template>
 
       <a-alert v-else type="info">
-        当前“保存方式”不是 API 图床，无需配置此分组。
+        当前"保存方式"不是 API 图床，无需配置此分组。
+      </a-alert>
+    </a-tab-pane>
+
+    <a-tab-pane key="watermark" title="水印设置">
+      <template v-if="data.watermark_enable">
+        <a-form-item label="水印类型">
+          <a-select v-model="data.watermark_type" class="w-full">
+            <a-option value="text">文字水印</a-option>
+            <a-option value="image">图片水印</a-option>
+          </a-select>
+        </a-form-item>
+
+        <!-- 文字水印配置 -->
+        <template v-if="data.watermark_type === 'text'">
+          <a-divider>文字水印配置</a-divider>
+          <a-form-item label="水印文字">
+            <a-input v-model="data.watermark_text" class="w-full" placeholder="请输入水印文字" />
+          </a-form-item>
+          <a-form-item label="字体大小(像素)">
+            <a-input-number v-model="data.watermark_font_size" class="numberInput" :min="12" :max="100" />
+          </a-form-item>
+          <a-form-item label="字体颜色">
+            <a-color-picker v-model="data.watermark_font_color" />
+          </a-form-item>
+          <a-form-item label="旋转角度(度)">
+            <a-slider v-model="data.watermark_text_rotate" :min="-45" :max="45" show-input />
+          </a-form-item>
+        </template>
+
+        <!-- 图片水印配置 -->
+        <template v-if="data.watermark_type === 'image'">
+          <a-divider>图片水印配置</a-divider>
+          <a-form-item label="水印图片路径" help="支持本地文件路径或远程URL">
+            <a-input v-model="data.watermark_image_path" class="w-full" placeholder="例如: watermark.png 或 https://example.com/watermark.png" />
+          </a-form-item>
+          <a-form-item label="缩放比例(%)">
+            <a-slider v-model="data.watermark_image_scale" :min="5" :max="100" show-input />
+          </a-form-item>
+          <a-form-item label="旋转角度(度)">
+            <a-slider v-model="data.watermark_image_rotate" :min="-45" :max="45" show-input />
+          </a-form-item>
+        </template>
+
+        <!-- 通用配置 -->
+        <a-divider>通用设置</a-divider>
+        <a-form-item label="水印位置">
+          <a-select v-model="data.watermark_position" class="w-full">
+            <a-option value="top_left">左上</a-option>
+            <a-option value="top_right">右上</a-option>
+            <a-option value="bottom_left">左下</a-option>
+            <a-option value="bottom_right">右下</a-option>
+            <a-option value="center">中心</a-option>
+            <a-option value="tile">平铺</a-option>
+          </a-select>
+        </a-form-item>
+        <a-form-item label="透明度(%)">
+          <a-slider v-model="data.watermark_opacity" :min="10" :max="100" show-input />
+        </a-form-item>
+        <a-form-item label="边距(像素)">
+          <a-input-number v-model="data.watermark_margin" class="numberInput" :min="0" :max="100" />
+        </a-form-item>
+        <a-form-item v-if="data.watermark_position === 'tile'" label="平铺间距(像素)">
+          <a-input-number v-model="data.watermark_tile_spacing" class="numberInput" :min="50" :max="500" />
+        </a-form-item>
+      </template>
+
+      <a-alert v-else type="info">
+        请先在上方开启"启用水印"功能。
       </a-alert>
     </a-tab-pane>
   </a-tabs>

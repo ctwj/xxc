@@ -2,7 +2,10 @@ package imagex
 
 import (
 	"bytes"
+	"fmt"
 	"image"
+	"image/color"
+	"image/draw"
 	_ "image/gif"
 	"image/jpeg"
 	_ "image/png"
@@ -10,11 +13,62 @@ import (
 	"github.com/muesli/smartcrop"
 	"github.com/muesli/smartcrop/nfnt"
 	"github.com/nfnt/resize"
+	"golang.org/x/image/font"
+	"golang.org/x/image/font/basicfont"
+	"golang.org/x/image/math/fixed"
 	_ "golang.org/x/image/webp"
 )
 
+// WatermarkType 水印类型
+type WatermarkType string
+
+const (
+	WatermarkTypeNone  WatermarkType = "none"
+	WatermarkTypeText  WatermarkType = "text"
+	WatermarkTypeImage WatermarkType = "image"
+)
+
+// WatermarkPosition 水印位置
+type WatermarkPosition string
+
+const (
+	PositionTopLeft     WatermarkPosition = "top_left"
+	PositionTopRight    WatermarkPosition = "top_right"
+	PositionBottomLeft  WatermarkPosition = "bottom_left"
+	PositionBottomRight WatermarkPosition = "bottom_right"
+	PositionCenter      WatermarkPosition = "center"
+	PositionTile        WatermarkPosition = "tile"
+)
+
+// WatermarkConfig 水印基础配置
+type WatermarkConfig struct {
+	Enabled     bool              // 是否启用水印
+	Type        WatermarkType     // 水印类型: text/image
+	Position    WatermarkPosition // 水印位置
+	Opacity     float64           // 透明度 (0-1), 1为不透明
+	Margin      int               // 边距(像素),用于非中心位置
+	TileSpacing int               // 平铺间距(像素),仅在平铺模式有效
+}
+
+// TextWatermarkConfig 文字水印配置
+type TextWatermarkConfig struct {
+	WatermarkConfig
+	Text        string // 水印文字
+	FontSize    int    // 字体大小(像素)
+	FontColor   string // 字体颜色 (十六进制,如 "#FF0000")
+	RotateAngle int    // 旋转角度(度),0表示不旋转
+}
+
+// ImageWatermarkConfig 图片水印配置
+type ImageWatermarkConfig struct {
+	WatermarkConfig
+	ImageData   []byte  // 水印图片数据
+	ScaleRatio  float64 // 缩放比例(0-1),相对于原图的比例
+	RotateAngle int     // 旋转角度(度)
+}
+
 // Image 图片处理工具
-// 包括缩放、提取缩略图、计算宽高比
+// 包括缩放、提取缩略图、计算宽高比、水印添加
 type Image struct {
 	width  int
 	height int
@@ -27,6 +81,11 @@ type Image struct {
 	// Lanczos2:Lanczos重采样，a=2
 	// Lanczos3:Lanczos重采样，a=3
 	interp resize.InterpolationFunction
+
+	// 水印配置
+	watermarkConfig *WatermarkConfig
+	textWatermark   *TextWatermarkConfig
+	imageWatermark  *ImageWatermarkConfig
 }
 
 func New() *Image {
@@ -142,4 +201,302 @@ func ComputeScale(width, height, maxWidth, maxHeight int) (int, int) {
 		width = int(float64(height) / scale)
 	}
 	return width, height
+}
+
+// SetWatermarkConfig 设置水印基础配置
+func (i *Image) SetWatermarkConfig(config *WatermarkConfig) *Image {
+	i.watermarkConfig = config
+	return i
+}
+
+// SetTextWatermark 设置文字水印参数
+func (i *Image) SetTextWatermark(text string, fontSize int, fontColor string, rotateAngle int) *Image {
+	i.textWatermark = &TextWatermarkConfig{
+		Text:        text,
+		FontSize:    fontSize,
+		FontColor:   fontColor,
+		RotateAngle: rotateAngle,
+	}
+	return i
+}
+
+// SetImageWatermark 设置图片水印参数
+func (i *Image) SetImageWatermark(imageData []byte, scaleRatio float64, rotateAngle int) *Image {
+	i.imageWatermark = &ImageWatermarkConfig{
+		ImageData:   imageData,
+		ScaleRatio:  scaleRatio,
+		RotateAngle: rotateAngle,
+	}
+	return i
+}
+
+// AddWatermark 根据配置添加水印(统一入口)
+func (i *Image) AddWatermark(img image.Image) (image.Image, error) {
+	if i.watermarkConfig == nil || !i.watermarkConfig.Enabled {
+		return img, nil
+	}
+
+	switch i.watermarkConfig.Type {
+	case WatermarkTypeText:
+		if i.textWatermark != nil {
+			return i.AddTextWatermark(img)
+		}
+	case WatermarkTypeImage:
+		if i.imageWatermark != nil {
+			return i.AddImageWatermark(img)
+		}
+	}
+
+	return img, nil
+}
+
+// AddWatermarkByte 对字节数据添加水印
+func (i *Image) AddWatermarkByte(b []byte) ([]byte, error) {
+	img, err := i.Byte2Image(b)
+	if err != nil {
+		return []byte{}, err
+	}
+
+	img, err = i.AddWatermark(img)
+	if err != nil {
+		return []byte{}, err
+	}
+
+	return i.Image2Byte(img), nil
+}
+
+// AddTextWatermark 添加文字水印
+func (i *Image) AddTextWatermark(img image.Image) (image.Image, error) {
+	if i.textWatermark == nil || i.textWatermark.Text == "" {
+		return img, nil
+	}
+
+	config := i.watermarkConfig
+	textConfig := i.textWatermark
+
+	// 创建一个新的 RGBA 图片用于绘制
+	bounds := img.Bounds()
+	rgba := image.NewRGBA(bounds)
+	draw.Draw(rgba, bounds, img, bounds.Min, draw.Src)
+
+	// 解析颜色
+	fontColor, err := parseHexColor(textConfig.FontColor)
+	if err != nil {
+		fontColor = color.RGBA{255, 255, 255, 255} // 默认白色
+	}
+
+	// 设置字体
+	face := basicfont.Face7x13
+	fontSize := textConfig.FontSize
+	if fontSize < 12 {
+		fontSize = 12
+	}
+
+	// 使用基础字体,设置透明度
+	fgCol := color.NRGBA{
+		R: uint8(fontColor.R),
+		G: uint8(fontColor.G),
+		B: uint8(fontColor.B),
+		A: uint8(config.Opacity * 255),
+	}
+
+	// 计算文字尺寸
+	textWidth := font.MeasureString(face, textConfig.Text).Ceil()
+	textHeight := fontSize
+
+	// 计算水印位置
+	x, y := i.computeWatermarkPosition(bounds.Dx(), bounds.Dy(), textWidth, textHeight)
+
+	// 绘制文字
+	drawer := font.Drawer{
+		Dst:  rgba,
+		Src:  image.NewUniform(fgCol),
+		Face: face,
+		Dot:  fixed.Point26_6{X: fixed.I(x), Y: fixed.I(y + textHeight)},
+	}
+	drawer.DrawString(textConfig.Text)
+
+	return rgba, nil
+}
+
+// AddImageWatermark 添加图片水印
+func (i *Image) AddImageWatermark(img image.Image) (image.Image, error) {
+	if i.imageWatermark == nil || len(i.imageWatermark.ImageData) == 0 {
+		return img, nil
+	}
+
+	config := i.watermarkConfig
+	imgConfig := i.imageWatermark
+
+	// 解码水印图片
+	watermarkImg, _, err := image.Decode(bytes.NewReader(imgConfig.ImageData))
+	if err != nil {
+		return nil, err
+	}
+
+	// 计算水印图片尺寸
+	wmBounds := watermarkImg.Bounds()
+	wmWidth := wmBounds.Dx()
+	wmHeight := wmBounds.Dy()
+
+	// 根据比例缩放水印图片
+	if imgConfig.ScaleRatio > 0 && imgConfig.ScaleRatio < 1 {
+		wmWidth = int(float64(wmWidth) * imgConfig.ScaleRatio)
+		wmHeight = int(float64(wmHeight) * imgConfig.ScaleRatio)
+		watermarkImg = resize.Resize(uint(wmWidth), uint(wmHeight), watermarkImg, resize.Lanczos3)
+	}
+
+	// 创建目标图片
+	bounds := img.Bounds()
+	rgba := image.NewRGBA(bounds)
+	draw.Draw(rgba, bounds, img, bounds.Min, draw.Src)
+
+	// 平铺模式
+	if config.Position == PositionTile {
+		return i.drawTileWatermark(rgba, watermarkImg), nil
+	}
+
+	// 计算水印位置
+	x, y := i.computeWatermarkPosition(bounds.Dx(), bounds.Dy(), wmWidth, wmHeight)
+
+	// 应用透明度并绘制水印
+	i.applyWatermarkWithOpacity(rgba, watermarkImg, x, y, config.Opacity)
+
+	return rgba, nil
+}
+
+// computeWatermarkPosition 计算水印位置
+func (i *Image) computeWatermarkPosition(imgWidth, imgHeight, wmWidth, wmHeight int) (x, y int) {
+	if i.watermarkConfig == nil {
+		return 0, 0
+	}
+
+	margin := i.watermarkConfig.Margin
+	position := i.watermarkConfig.Position
+
+	switch position {
+	case PositionTopLeft:
+		x = margin
+		y = margin
+	case PositionTopRight:
+		x = imgWidth - wmWidth - margin
+		y = margin
+	case PositionBottomLeft:
+		x = margin
+		y = imgHeight - wmHeight - margin
+	case PositionBottomRight:
+		x = imgWidth - wmWidth - margin
+		y = imgHeight - wmHeight - margin
+	case PositionCenter:
+		x = (imgWidth - wmWidth) / 2
+		y = (imgHeight - wmHeight) / 2
+	default:
+		// 默认右下角
+		x = imgWidth - wmWidth - margin
+		y = imgHeight - wmHeight - margin
+	}
+
+	return x, y
+}
+
+// applyWatermarkWithOpacity 应用透明度并绘制水印
+func (i *Image) applyWatermarkWithOpacity(dst *image.RGBA, src image.Image, x, y int, opacity float64) {
+	srcBounds := src.Bounds()
+	dstBounds := dst.Bounds()
+
+	// 确保水印不超出目标图片范围
+	if x < 0 {
+		x = 0
+	}
+	if y < 0 {
+		y = 0
+	}
+	if x+srcBounds.Dx() > dstBounds.Dx() {
+		x = dstBounds.Dx() - srcBounds.Dx()
+	}
+	if y+srcBounds.Dy() > dstBounds.Dy() {
+		y = dstBounds.Dy() - srcBounds.Dy()
+	}
+
+	// 遍历水印图片的每个像素
+	for sy := srcBounds.Min.Y; sy < srcBounds.Max.Y; sy++ {
+		for sx := srcBounds.Min.X; sx < srcBounds.Max.X; sx++ {
+			dx := x + (sx - srcBounds.Min.X)
+			dy := y + (sy - srcBounds.Min.Y)
+
+			if dx >= 0 && dx < dstBounds.Dx() && dy >= 0 && dy < dstBounds.Dy() {
+				// 获取水印像素
+				srcColor := color.NRGBAModel.Convert(src.At(sx, sy)).(color.NRGBA)
+				if srcColor.A == 0 {
+					continue // 完全透明像素跳过
+				}
+
+				// 应用透明度
+				srcColor.A = uint8(float64(srcColor.A) * opacity)
+
+				// 获取目标像素
+				dstColor := dst.RGBAAt(dx, dy)
+
+				// Alpha 混合
+				alpha := float64(srcColor.A) / 255.0
+				dstColor.R = uint8(float64(dstColor.R)*(1-alpha) + float64(srcColor.R)*alpha)
+				dstColor.G = uint8(float64(dstColor.G)*(1-alpha) + float64(srcColor.G)*alpha)
+				dstColor.B = uint8(float64(dstColor.B)*(1-alpha) + float64(srcColor.B)*alpha)
+				dstColor.A = 255 // 目标图片不透明
+
+				dst.SetRGBA(dx, dy, dstColor)
+			}
+		}
+	}
+}
+
+// drawTileWatermark 绘制平铺水印
+func (i *Image) drawTileWatermark(dst *image.RGBA, watermark image.Image) image.Image {
+	if i.watermarkConfig == nil {
+		return dst
+	}
+
+	spacing := i.watermarkConfig.TileSpacing
+	if spacing <= 0 {
+		spacing = 100
+	}
+
+	wmBounds := watermark.Bounds()
+	wmWidth := wmBounds.Dx()
+	wmHeight := wmBounds.Dy()
+
+	dstBounds := dst.Bounds()
+	dstWidth := dstBounds.Dx()
+	dstHeight := dstBounds.Dy()
+
+	// 平铺绘制水印
+	for y := 0; y < dstHeight; y += wmHeight + spacing {
+		for x := 0; x < dstWidth; x += wmWidth + spacing {
+			i.applyWatermarkWithOpacity(dst, watermark, x, y, i.watermarkConfig.Opacity)
+		}
+	}
+
+	return dst
+}
+
+// parseHexColor 解析十六进制颜色
+func parseHexColor(hex string) (color.RGBA, error) {
+	c := color.RGBA{}
+	var err error
+
+	switch len(hex) {
+	case 7:
+		_, err = fmt.Sscanf(hex, "#%02x%02x%02x", &c.R, &c.G, &c.B)
+		c.A = 255
+	case 4:
+		_, err = fmt.Sscanf(hex, "#%1x%1x%1x", &c.R, &c.G, &c.B)
+		c.R *= 17
+		c.G *= 17
+		c.B *= 17
+		c.A = 255
+	default:
+		err = fmt.Errorf("invalid color format: %s", hex)
+	}
+
+	return c, err
 }
