@@ -65,6 +65,16 @@
       <a-switch type="line" :default-checked="record.status" @change="runLinkStatus(record.id, $event)" @dblclick.stop />
     </template>
 
+    <template #articleStatus="{ record,rowIndex,column }">
+      <a-tag
+        :color="record.status ? 'green' : 'orange'"
+        @click="runArticleStatus(record.id, !record.status)"
+        style="cursor: pointer"
+      >
+        {{ record.status ? $t('published') : $t('unpublished') }}
+      </a-tag>
+    </template>
+
     <template #url="{ record,rowIndex,column }">
       <span @click="useOpenLink" class="inline-block cursor-pointer hover:underline underline-offset-4 decoration-2 hover:text-blue-500">{{ record[column.dataIndex] }}</span>
     </template>
@@ -124,7 +134,7 @@
     tableBatchDelete,
     tableGet,
     tableCreate,
-    tableUpdate, linkStatus, storePost,
+    tableUpdate, linkStatus, storePost, articleStatus,
   } from "@/api/index.js";
   import {
     batchDeleteOption,
@@ -272,7 +282,7 @@
   }
 
   const { run:runLinkStatus } = useRequest(linkStatus, {manual:true})
-
+  const { run:runArticleStatus } = useRequest(articleStatus, {manual:true, onSuccess: refreshList})
 
   function detectDelay(record){
     let now = new Date().getTime() / 1000

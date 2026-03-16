@@ -21,6 +21,7 @@ type ArticleBase struct {
 	Views       int    `gorm:"type:int;size:32;default:0;index"          json:"views"`
 	Thumbnail   string `gorm:"type:varchar(250);default:''"              json:"thumbnail"`
 	Description string `gorm:"type:varchar(250);default:''"              json:"description"`
+	Status      bool   `gorm:"type:boolean;default:false;index"          json:"status"` // 发布状态 true:已发布 false:未发布
 }
 
 func (ArticleBase) TableName() string {

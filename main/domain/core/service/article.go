@@ -381,3 +381,13 @@ func (s *ArticleService) FindDetailListByID(list []entity.ArticleDetail, id int)
 func (s *ArticleService) BatchSetCategory(categoryID int, ids []int) error {
 	return repository.Article.BatchSetCategory(categoryID, ids)
 }
+
+// EnableArticle 启用文章（发布）
+func (s *ArticleService) EnableArticle(id int) error {
+	return repository.Article.EnableArticle(id)
+}
+
+// DisableArticle 禁用文章（未发布）
+func (s *ArticleService) DisableArticle(id int) error {
+	return repository.Article.DisableArticle(id)
+}

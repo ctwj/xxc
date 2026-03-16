@@ -43,7 +43,11 @@
     <a-form-item field="views" :label="$t('views')">
       <a-input-number class="input" v-model="record.views" :min="0" />
     </a-form-item>
-  
+
+    <a-form-item field="status" :label="$t('publishStatus')">
+      <a-switch v-model="record.status" :checked-text="$t('published')" :unchecked-text="$t('unpublished')" />
+    </a-form-item>
+
     <a-form-item field="create_time" :label="$t('createTime')">
       <a-date-picker class="w-full input" style="background-color: var(--color-bg-5);"  v-model="createTime" value-format="timestamp" show-time @change="(val)=>record.create_time =parseInt(val / 1000)" />
     </a-form-item>

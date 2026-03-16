@@ -289,3 +289,13 @@ func (r *ArticleRepo) CountByCategoryID(id int) (res int64, err error) {
 func (r *ArticleRepo) BatchSetCategory(categoryID int, ids []int) error {
 	return db.DB.Model(&entity.ArticleBase{}).Where("id in ?", ids).UpdateColumn("category_id", categoryID).Error
 }
+
+// EnableArticle 启用文章（发布）
+func (r *ArticleRepo) EnableArticle(id int) error {
+	return db.DB.Model(&entity.ArticleBase{}).Where("id = ?", id).UpdateColumn("status", true).Error
+}
+
+// DisableArticle 禁用文章（未发布）
+func (r *ArticleRepo) DisableArticle(id int) error {
+	return db.DB.Model(&entity.ArticleBase{}).Where("id = ?", id).UpdateColumn("status", false).Error
+}

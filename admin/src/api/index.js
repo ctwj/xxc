@@ -18,6 +18,7 @@ export const tableUpdate = (modelName,data) => usePost(`/${modelName}/update`,da
 export const articleCreateTagByNameList = (articleID, nameList) => usePost(`/article/createTagByNameList/${articleID}`, nameList);
 export const articleDeleteTagByIds = (articleID, tagIds) => usePost(`/article/deleteTagByIds/${articleID}`, tagIds);
 export const articleBatchSetCategory = (category_id,data) => usePost(`/article/batchSetCategory/${category_id}`,data);
+export const articleStatus = (id,status) => usePostData(`/article/status/${id}`, {status:status});
 
 export const categoryTree = ()=> useGetData('/category/tree')
 export const categoryBatchSetParentCategory = (parent_id,data)=> usePost(`/category/batchSetParentCategory/${parent_id}`,data)

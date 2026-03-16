@@ -54,6 +54,13 @@
       align:'right',
     },
     {
+      title: t('status'),
+      dataIndex: 'status',
+      slotName:'articleStatus',
+      width: 100,
+      align:'center',
+    },
+    {
       title: t('createTime'),
       dataIndex: 'create_time',
       slotName:'time',
