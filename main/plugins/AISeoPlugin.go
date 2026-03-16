@@ -57,7 +57,7 @@ func NewAISeoPlugin() *AISeoPlugin {
 		MinLongTail:       2,
 		MinTags:           1,
 		MaxTags:           3,
-		EnableRewrite:     false,
+		EnableRewrite:     true,
 		OtherCategoryName: "其他软件",
 		CronEnable:        false,
 		CronExp:           "@every 30m",
@@ -70,7 +70,7 @@ func NewAISeoPlugin() *AISeoPlugin {
 func (p *AISeoPlugin) Info() *pluginEntity.PluginInfo {
 	return &pluginEntity.PluginInfo{
 		ID:         "AISeoPlugin",
-		About:      "AI 驱动的 SEO 优化插件：智能分类推荐、关键词提取、描述优化、内容改写、标签生成",
+		About:      "SEO插件：AI 驱动的 SEO 优化，智能分类推荐、关键词提取、描述优化、内容改写、标签生成",
 		RunEnable:  true,
 		CronEnable: true,
 		NoOptions:  false,
@@ -95,7 +95,6 @@ func (p *AISeoPlugin) Run(ctx *pluginEntity.Plugin) error {
 	p.ctx = ctx
 
 	if !p.Enable {
-		p.ctx.Log.Info("AISeoPlugin is disabled")
 		return nil
 	}
 
@@ -108,20 +107,18 @@ func (p *AISeoPlugin) Run(ctx *pluginEntity.Plugin) error {
 	// 获取未生成的文章
 	articles, err := p.getUngeneratedArticles(p.BatchSize)
 	if err != nil {
-		p.ctx.Log.Error("Failed to get ungenerated articles", zap.Error(err))
+		p.ctx.Log.Error("Failed to get articles", zap.Error(err))
 		return err
 	}
 
 	if len(articles) == 0 {
-		p.ctx.Log.Info("No ungenerated articles found")
 		return nil
 	}
 
-	p.ctx.Log.Info("Found ungenerated articles", zap.Int("count", len(articles)))
+	p.ctx.Log.Info("AISeoPlugin started", zap.Int("articles", len(articles)))
 
 	// 处理每篇文章
 	successCount := 0
-	skipCount := 0
 	for _, article := range articles {
 		if err := p.processArticle(article); err != nil {
 			p.ctx.Log.Error("Failed to process article",
@@ -134,10 +131,7 @@ func (p *AISeoPlugin) Run(ctx *pluginEntity.Plugin) error {
 		}
 	}
 
-	p.ctx.Log.Info("AISeoPlugin completed",
-		zap.Int("success", successCount),
-		zap.Int("skipped", skipCount),
-	)
+	p.ctx.Log.Info("AISeoPlugin completed", zap.Int("success", successCount))
 
 	return nil
 }
@@ -179,15 +173,12 @@ func (p *AISeoPlugin) isArticleGenerated(article *entity.Article) bool {
 
 // getUngeneratedArticles 获取未生成的文章
 func (p *AISeoPlugin) getUngeneratedArticles(limit int) ([]*entity.Article, error) {
-	p.ctx.Log.Info("Getting ungenerated articles", zap.Int("limit", limit))
-
 	// 获取文章基础列表
 	baseList, err := service.Article.List(context.NewContext(limit*3, "id asc"))
 	if err != nil {
 		p.ctx.Log.Error("Failed to get article list", zap.Error(err))
 		return nil, err
 	}
-	p.ctx.Log.Info("Got article list", zap.Int("count", len(baseList)))
 
 	// 逐个获取完整文章信息
 	var result []*entity.Article
@@ -205,16 +196,23 @@ func (p *AISeoPlugin) getUngeneratedArticles(limit int) ([]*entity.Article, erro
 			continue
 		}
 
-		// 检查是否已生成
-		if !p.isArticleGenerated(article) {
+		// 检查是否需要处理
+		needProcess := false
+		if p.ForceRegenerate {
+			// 强制重新生成模式：处理所有文章
+			needProcess = true
+		} else {
+			// 正常模式：只处理未生成的文章
+			if !p.isArticleGenerated(article) {
+				needProcess = true
+			}
+		}
+
+		if needProcess {
 			result = append(result, article)
-			p.ctx.Log.Debug("Found ungenerated article",
-				zap.Int("article_id", article.ID),
-				zap.String("title", article.Title))
 		}
 	}
 
-	p.ctx.Log.Info("Found ungenerated articles", zap.Int("count", len(result)))
 	return result, nil
 }
 
@@ -222,21 +220,16 @@ func (p *AISeoPlugin) getUngeneratedArticles(limit int) ([]*entity.Article, erro
 func (p *AISeoPlugin) processArticle(article *entity.Article) error {
 	// 检查是否已生成
 	if !p.ForceRegenerate && p.isArticleGenerated(article) {
-		p.ctx.Log.Info("Article already generated, skipping",
-			zap.Int("article_id", article.ID),
-			zap.String("title", article.Title),
-		)
 		return nil
 	}
-
-	p.ctx.Log.Info("Processing article",
-		zap.Int("article_id", article.ID),
-		zap.String("title", article.Title),
-	)
 
 	// 调用 AI 生成 SEO 内容
 	result, err := p.generateSEOContent(article)
 	if err != nil {
+		p.ctx.Log.Error("Failed to generate SEO content",
+			zap.Int("article_id", article.ID),
+			zap.String("title", article.Title),
+			zap.Error(err))
 		return err
 	}
 
@@ -245,6 +238,9 @@ func (p *AISeoPlugin) processArticle(article *entity.Article) error {
 
 	// 保存文章
 	if err := service.Article.Update(article); err != nil {
+		p.ctx.Log.Error("Failed to update article",
+			zap.Int("article_id", article.ID),
+			zap.Error(err))
 		return err
 	}
 
@@ -253,13 +249,19 @@ func (p *AISeoPlugin) processArticle(article *entity.Article) error {
 
 	// 再次保存（更新 extends）
 	if err := service.Article.Update(article); err != nil {
+		p.ctx.Log.Error("Failed to update article extends",
+			zap.Int("article_id", article.ID),
+			zap.Error(err))
 		return err
 	}
 
+	// 输出成功日志
 	p.ctx.Log.Info("Article processed successfully",
 		zap.Int("article_id", article.ID),
+		zap.String("title", article.Title),
 		zap.Int("keywords_count", len(result.Keywords)),
 		zap.Int("tags_count", len(result.Tags)),
+		zap.Bool("content_rewrited", result.ContentRewrited),
 	)
 
 	return nil

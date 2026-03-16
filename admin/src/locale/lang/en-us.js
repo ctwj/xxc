@@ -176,6 +176,7 @@ export default {
     QuarkCloudTransfer:'Quark Cloud Transfer',
     download_limit:'Download Limit',
     GnDownSpider:'GnDown Spider',
+    AISeoPlugin:'SEO Plugin',
 
 
     wangEditor:{
