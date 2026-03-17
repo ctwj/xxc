@@ -18,7 +18,6 @@ import (
 	"github.com/shirou/gopsutil/v3/load"
 	"github.com/shirou/gopsutil/v3/mem"
 	"github.com/shirou/gopsutil/v3/process"
-	"go.uber.org/zap"
 )
 
 // SystemLoadPercent 系统平均负载
