@@ -137,3 +137,23 @@ func ArticleBatchSetCategory(ctx *fiber.Ctx) error {
 	}
 	return ctx.JSON(mapper.MessageResult(service.Article.BatchSetCategory(categoryID, ids)))
 }
+
+// ArticleStatus 更新文章发布状态
+func ArticleStatus(ctx *fiber.Ctx) error {
+	id, err := ctx.ParamsInt("id")
+	if err != nil {
+		return ctx.JSON(mapper.MessageResult(err))
+	}
+	var item struct {
+		Status bool `json:"status"`
+	}
+	if err := ctx.BodyParser(&item); err != nil {
+		return ctx.JSON(mapper.MessageResult(err))
+	}
+	if item.Status {
+		err = service.Article.EnableArticle(id)
+	} else {
+		err = service.Article.DisableArticle(id)
+	}
+	return ctx.JSON(mapper.MessageResult(err))
+}

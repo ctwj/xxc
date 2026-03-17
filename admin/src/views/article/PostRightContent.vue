@@ -43,7 +43,11 @@
     <a-form-item field="views" :label="$t('views')">
       <a-input-number class="input" v-model="record.views" :min="0" />
     </a-form-item>
-  
+
+    <a-form-item field="status" :label="$t('publishStatus')">
+      <a-switch v-model="record.status" :checked-text="$t('published')" :unchecked-text="$t('unpublished')" />
+    </a-form-item>
+
     <a-form-item field="create_time" :label="$t('createTime')">
       <a-date-picker class="w-full input" style="background-color: var(--color-bg-5);"  v-model="createTime" value-format="timestamp" show-time @change="(val)=>record.create_time =parseInt(val / 1000)" />
     </a-form-item>
@@ -74,7 +78,15 @@
                 <a-input class="input input_extends" v-model="item.key" /><span class="ml-2">:</span>
               </div>
             </template>
-            <a-textarea class="input input_extends" :auto-size="{minRows:1,maxRows:5}" v-model="item.value" />
+            <!-- 如果 value 是对象类型，显示格式化的 JSON（只读） -->
+            <div v-if="typeof item.value === 'object' && item.value !== null" class="w-full">
+              <div class="relative">
+                <pre class="json-display">{{ JSON.stringify(item.value, null, 2) }}</pre>
+                <a-tag color="arcoblue" size="small" class="absolute top-0 right-0">只读</a-tag>
+              </div>
+            </div>
+            <!-- 如果 value 是字符串类型，可编辑 -->
+            <a-textarea v-else class="input input_extends" :auto-size="{minRows:1,maxRows:5}" v-model="item.value" />
             <a-button class="ml-1" type="text" @click="record.res.splice(index,1)"><template #icon><icon-close-circle :stroke-width="3" /></template></a-button>
           </a-form-item>
         </a-form>
@@ -126,5 +138,17 @@
   }
   .input_extends{
     border-color: var(--color-border-3);
+  }
+  .json-display{
+    background-color: var(--color-bg-5);
+    padding: 10px;
+    border-radius: 4px;
+    border: 1px solid var(--color-border-3);
+    font-size: 12px;
+    color: var(--color-text-1);
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    max-height: 200px;
+    overflow-y: auto;
   }
 </style>

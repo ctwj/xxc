@@ -40,15 +40,15 @@ func (d *dashboard) Controller(ctx *fiber.Ctx) (err error) {
 	case "cache":
 		data, err = appService.CacheSize()
 	case "articleTotal":
-		data, err = service.Article.CountTotal()
+		data, err = service.Article.CountTotalPublished()
 	case "articleToday":
-		data, err = service.Article.CountToday()
+		data, err = service.Article.CountTodayPublished()
 	case "articleYesterday":
-		data, err = service.Article.CountYesterday()
+		data, err = service.Article.CountYesterdayPublished()
 	case "articleLast7days":
-		data, err = service.Article.CountLastFewDays(7)
+		data, err = service.Article.CountLastFewDaysPublished(7)
 	case "articleLast30days":
-		data, err = service.Article.CountLastFewDays(30)
+		data, err = service.Article.CountLastFewDaysPublished(30)
 	case "storeTotal":
 		data, err = service.Store.CountTotal()
 	case "storeToday":

@@ -65,6 +65,20 @@
       <a-switch type="line" :default-checked="record.status" @change="runLinkStatus(record.id, $event)" @dblclick.stop />
     </template>
 
+    <template #articleStatus="{ record,rowIndex,column }">
+      <a-tag
+        :color="record.status ? 'green' : 'orange'"
+        @click="confirmArticleStatus(record)"
+        style="cursor: pointer"
+      >
+        {{ record.status ? $t('published') : $t('unpublished') }}
+      </a-tag>
+    </template>
+
+    <template #category="{ record,rowIndex,column }">
+      <span>{{ getCategoryName(record[column.dataIndex]) }}</span>
+    </template>
+
     <template #url="{ record,rowIndex,column }">
       <span @click="useOpenLink" class="inline-block cursor-pointer hover:underline underline-offset-4 decoration-2 hover:text-blue-500">{{ record[column.dataIndex] }}</span>
     </template>
@@ -111,11 +125,13 @@
   import {ref, reactive, computed, provide} from 'vue'
   import {useStore} from "@/store/index.js";
   import {useStorage} from "@vueuse/core";
+  import { Modal } from '@arco-design/web-vue';
   import Checkbox from "./Checkbox.vue";
   import ColumnSearch from "./ColumnSearch.vue";
   import Action from './slot/Action.vue'
   import { NTime } from 'naive-ui'
   import {useOpenLink} from '@/hooks/utils.js'
+  import {t} from '@/locale'
 
   import {
     tableList,
@@ -124,7 +140,7 @@
     tableBatchDelete,
     tableGet,
     tableCreate,
-    tableUpdate, linkStatus, storePost,
+    tableUpdate, linkStatus, storePost, articleStatus,
   } from "@/api/index.js";
   import {
     batchDeleteOption,
@@ -137,7 +153,7 @@
   } from './index.js'
   import {useAppendSiteURL} from "@/hooks/app/index.js";
 
-  const {columns, order,modelName, postWidth, postHeight, postComponent} = defineProps({
+  const {columns, order,modelName, postWidth, postHeight, postComponent, categoryTree} = defineProps({
     columns: Object,
     order: String,
     modelName:String,
@@ -146,6 +162,7 @@
     formStyle: String,
     postHeight: String,
     postComponent: Object,
+    categoryTree: {type: Array, default: () => []},
   })
   columns.push({ title: '', slotName:'action', align:'right', width:120 })
 
@@ -272,11 +289,42 @@
   }
 
   const { run:runLinkStatus } = useRequest(linkStatus, {manual:true})
+  const { run:runArticleStatus } = useRequest(articleStatus, {manual:true, onSuccess: refreshList})
 
+  function confirmArticleStatus(record){
+    Modal.confirm({
+      title: record.status ? t('confirmUnpublish') : t('confirmPublish'),
+      content: record.status ? t('confirmUnpublishMessage') : t('confirmPublishMessage'),
+      okText: t('confirm'),
+      cancelText: t('cancel'),
+      onOk: () => {
+        runArticleStatus(record.id, !record.status)
+      }
+    })
+  }
 
   function detectDelay(record){
     let now = new Date().getTime() / 1000
     return (now - record.create_time) < record.detect_delay*60
+  }
+
+  // 根据分类ID查找分类名称
+  function getCategoryName(categoryId) {
+    if (!categoryId || !categoryTree || categoryTree.length === 0) return '-'
+    
+    // 递归查找分类
+    const findCategory = (list, id) => {
+      for (const cat of list) {
+        if (cat.id === id) return cat.name
+        if (cat.children && cat.children.length > 0) {
+          const found = findCategory(cat.children, id)
+          if (found) return found
+        }
+      }
+      return null
+    }
+    
+    return findCategory(categoryTree, categoryId) || '-'
   }
 </script>
 

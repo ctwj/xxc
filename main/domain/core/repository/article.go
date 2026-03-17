@@ -150,6 +150,34 @@ func (r *ArticleRepo) CountLastFewDays(n int) (res int64, err error) {
 	return
 }
 
+// CountTotalPublished 统计已发布文章总数
+func (r *ArticleRepo) CountTotalPublished() (res int64, err error) {
+	err = db.DB.Model(entity.ArticleBase{}).Where("status = ?", true).Count(&res).Error
+	return
+}
+
+// CountTodayPublished 统计今日已发布数量
+func (r *ArticleRepo) CountTodayPublished() (res int64, err error) {
+	err = db.DB.Model(entity.ArticleBase{}).Where("create_time >= ? and status = ?", utils.TodayBeginTime().Unix(), true).Count(&res).Error
+	return
+}
+
+// CountYesterdayPublished 统计昨日已发布数量
+func (r *ArticleRepo) CountYesterdayPublished() (res int64, err error) {
+	today := utils.TodayBeginTime()
+	yesterday := today.AddDate(0, 0, -1)
+	err = db.DB.Model(entity.ArticleBase{}).Where("create_time >= ? and create_time < ? and status = ?", yesterday.Unix(), today.Unix(), true).Count(&res).Error
+	return
+}
+
+// CountLastFewDaysPublished 统计最近几日已发布的数据
+func (r *ArticleRepo) CountLastFewDaysPublished(n int) (res int64, err error) {
+	today := utils.TodayBeginTime()
+	days := today.AddDate(0, 0, -n)
+	err = db.DB.Model(entity.ArticleBase{}).Where("create_time >= ? and status = ?", days.Unix(), true).Count(&res).Error
+	return
+}
+
 func (r *ArticleRepo) GetIdByTitle(title string) (id int, err error) {
 	err = db.DB.Model(entity.ArticleBase{}).Where("title = ?", title).Limit(1).Pluck("id", &id).Error
 	return
@@ -288,4 +316,14 @@ func (r *ArticleRepo) CountByCategoryID(id int) (res int64, err error) {
 // BatchSetCategory 批量设置分类
 func (r *ArticleRepo) BatchSetCategory(categoryID int, ids []int) error {
 	return db.DB.Model(&entity.ArticleBase{}).Where("id in ?", ids).UpdateColumn("category_id", categoryID).Error
+}
+
+// EnableArticle 启用文章（发布）
+func (r *ArticleRepo) EnableArticle(id int) error {
+	return db.DB.Model(&entity.ArticleBase{}).Where("id = ?", id).UpdateColumn("status", true).Error
+}
+
+// DisableArticle 禁用文章（未发布）
+func (r *ArticleRepo) DisableArticle(id int) error {
+	return db.DB.Model(&entity.ArticleBase{}).Where("id = ?", id).UpdateColumn("status", false).Error
 }

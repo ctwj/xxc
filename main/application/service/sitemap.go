@@ -44,7 +44,10 @@ func (s *sitemap) listOption(opt *configEntity.SitemapOption) (ctx *context.Cont
 	if opt.InHours > 0 {
 		t = time.Now().Unix() - int64(opt.InHours)*60*60
 	}
-	return context.NewContext(opt.Limit, "id desc"), t
+	ctx = context.NewContext(opt.Limit, "id desc")
+	// 添加状态过滤，只包含已发布的文章
+	ctx.Where = &context.Where{Field: "status", Operator: context.WhereOperatorEqualTrue}
+	return ctx, t
 }
 
 func (s *sitemap) ArticleText() (res string, err error) {

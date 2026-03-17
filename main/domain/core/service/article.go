@@ -357,6 +357,26 @@ func (s *ArticleService) CountLastFewDays(n int) (int64, error) {
 	return repository.Article.CountLastFewDays(n)
 }
 
+// CountTotalPublished 统计已发布文章总数
+func (s *ArticleService) CountTotalPublished() (int64, error) {
+	return repository.Article.CountTotalPublished()
+}
+
+// CountTodayPublished 统计今日已发布数量
+func (s *ArticleService) CountTodayPublished() (int64, error) {
+	return repository.Article.CountTodayPublished()
+}
+
+// CountYesterdayPublished 统计昨日已发布数量
+func (s *ArticleService) CountYesterdayPublished() (int64, error) {
+	return repository.Article.CountYesterdayPublished()
+}
+
+// CountLastFewDaysPublished 统计最近几日已发布的数据
+func (s *ArticleService) CountLastFewDaysPublished(n int) (int64, error) {
+	return repository.Article.CountLastFewDaysPublished(n)
+}
+
 func (s *ArticleService) MergeBaseListAndDetailList(v1 []entity.ArticleBase, v2 []entity.ArticleDetail) (res []entity.Article) {
 	for _, v := range v1 {
 		detail, found := s.FindDetailListByID(v2, v.ID)
@@ -380,4 +400,14 @@ func (s *ArticleService) FindDetailListByID(list []entity.ArticleDetail, id int)
 // BatchSetCategory 批量设置分类
 func (s *ArticleService) BatchSetCategory(categoryID int, ids []int) error {
 	return repository.Article.BatchSetCategory(categoryID, ids)
+}
+
+// EnableArticle 启用文章（发布）
+func (s *ArticleService) EnableArticle(id int) error {
+	return repository.Article.EnableArticle(id)
+}
+
+// DisableArticle 禁用文章（未发布）
+func (s *ArticleService) DisableArticle(id int) error {
+	return repository.Article.DisableArticle(id)
 }
