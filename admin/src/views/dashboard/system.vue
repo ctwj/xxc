@@ -14,10 +14,12 @@
             <div class="title">{{$t('memory')}}</div>
         </a-grid-item>
 
-        <a-grid-item v-for="(item,index) in disks">
-            <a-progress type="circle" :size="store.isMobile ? 'medium':'large'" :percent="dec(item)" status='warning' :color="color" />
-            <div class="title">{{$t('disk') + (disks.length > 1 ? ' '+(index+1):'')}}</div>
-        </a-grid-item>
+        <template v-for="(item, index) in disks" :key="index">
+            <a-grid-item v-if="item && item.name">
+                <a-progress type="circle" :size="store.isMobile ? 'medium':'large'" :percent="dec(item.usedPercent)" status='warning' :color="color" />
+                <div class="title">{{ item.name }} ({{ dec(item.usedPercent) }})</div>
+            </a-grid-item>
+        </template>
 
       </a-grid>
     </a-card>
@@ -30,7 +32,7 @@
   import {useRequest} from "vue-request";
   import {dashboardData} from "@/api/index.js";
   import {useStore} from "@/store/index.js";
-  import {computed, ref} from "vue";
+  import {ref, watch} from "vue";
 
   const store = useStore()
   const color = 'rgb(var(--primary-6))'

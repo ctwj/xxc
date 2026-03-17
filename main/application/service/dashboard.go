@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"errors"
 	"os"
+	"runtime"
 	"runtime/pprof"
+	"strings"
 	"time"
 
 	"moss/application/dto"
@@ -16,6 +18,7 @@ import (
 	"github.com/shirou/gopsutil/v3/load"
 	"github.com/shirou/gopsutil/v3/mem"
 	"github.com/shirou/gopsutil/v3/process"
+	"go.uber.org/zap"
 )
 
 // SystemLoadPercent 系统平均负载
@@ -46,16 +49,80 @@ func SystemMemoryPercent() (_ float64, err error) {
 }
 
 // SystemDiskPercents 系统硬盘占用率
-func SystemDiskPercents() (res []float64, err error) {
+func SystemDiskPercents() (res []dto.DiskInfo, err error) {
 	parts, err := disk.Partitions(false)
 	if err != nil {
 		return
 	}
+
 	for _, part := range parts {
-		diskInfo, _ := disk.Usage(part.Mountpoint)
-		res = append(res, diskInfo.UsedPercent)
+		// 先过滤空挂载点
+		if part.Mountpoint == "" {
+			continue
+		}
+
+		// 过滤系统保留分区和特殊文件系统
+		if !isPrimaryPartition(part) {
+			continue
+		}
+
+		diskInfo, err := disk.Usage(part.Mountpoint)
+		if err != nil {
+			continue
+		}
+
+		// 过滤无效分区：容量为0
+		if diskInfo.Total == 0 {
+			continue
+		}
+
+		res = append(res, dto.DiskInfo{
+			Name:        part.Mountpoint,
+			UsedPercent: diskInfo.UsedPercent,
+		})
 	}
 	return
+}
+
+// isPrimaryPartition 判断是否为主要分区（过滤系统保留分区和特殊文件系统）
+func isPrimaryPartition(part disk.PartitionStat) bool {
+	// 过滤掉空挂载点
+	if part.Mountpoint == "" {
+		return false
+	}
+
+	// 过滤掉特殊文件系统
+	excludedFstypes := []string{"proc", "sysfs", "devtmpfs", "tmpfs", "cgroup", "overlay", "squashfs"}
+	for _, fs := range excludedFstypes {
+		if strings.EqualFold(part.Fstype, fs) {
+			return false
+		}
+	}
+
+	// Windows 下过滤掉隐藏分区和系统保留分区
+	if runtime.GOOS == "windows" {
+		// 只显示形如 "C:"、"D:" 的盘符
+		if len(part.Mountpoint) != 2 || part.Mountpoint[1] != ':' {
+			return false
+		}
+		// 过滤掉无效的盘符（A:、B: 通常用于软驱）
+		if part.Mountpoint[0] < 'C' || part.Mountpoint[0] > 'Z' {
+			return false
+		}
+	}
+
+	// Linux 下过滤掉特殊挂载点
+	if runtime.GOOS == "linux" {
+		// 过滤掉 /proc、/sys、/dev 等特殊目录
+		excludedMountpoints := []string{"/proc", "/sys", "/dev", "/run", "/boot/efi"}
+		for _, mp := range excludedMountpoints {
+			if strings.HasPrefix(part.Mountpoint, mp) {
+				return false
+			}
+		}
+	}
+
+	return true
 }
 
 // AppCPUPercent 应用cpu使用率
