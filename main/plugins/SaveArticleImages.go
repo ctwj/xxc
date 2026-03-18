@@ -111,12 +111,15 @@ type SaveArticleImages struct {
 	WatermarkOpacity     int    `json:"watermark_opacity"`      // 透明度 (0-100), 100为不透明
 	WatermarkMargin      int    `json:"watermark_margin"`       // 边距(像素)
 	WatermarkTileSpacing int    `json:"watermark_tile_spacing"` // 平铺间距(像素)
+	WatermarkMinWidth   int    `json:"watermark_min_width"`    // 最小宽度限制(像素),只有图片宽度大于等于此值才添加水印
 
 	// 文字水印配置
 	WatermarkText       string `json:"watermark_text"`        // 水印文字
 	WatermarkFontSize   int    `json:"watermark_font_size"`   // 字体大小(像素)
 	WatermarkFontColor  string `json:"watermark_font_color"`  // 字体颜色
 	WatermarkTextRotate int    `json:"watermark_text_rotate"` // 旋转角度(度)
+	WatermarkBgColor    string `json:"watermark_bg_color"`    // 背景颜色 (十六进制,如 "#000000"), 空字符串表示无背景
+	WatermarkBgRadius   int    `json:"watermark_bg_radius"`   // 背景圆角半径(像素),0表示无圆角
 
 	// 图片水印配置
 	WatermarkImagePath   string `json:"watermark_image_path"`   // 水印图片路径
@@ -158,9 +161,12 @@ func NewSaveArticleImages() *SaveArticleImages {
 		WatermarkOpacity:     70,
 		WatermarkMargin:      10,
 		WatermarkTileSpacing: 100,
+		WatermarkMinWidth:    0,     // 默认不限制
 		WatermarkFontSize:    20,
 		WatermarkFontColor:   "#FFFFFF",
 		WatermarkTextRotate:  0,
+		WatermarkBgColor:     "",    // 默认无背景
+		WatermarkBgRadius:    0,     // 默认无圆角
 		WatermarkImageScale:  20,
 		WatermarkImageRotate: 0,
 	}
@@ -471,13 +477,9 @@ func (s *SaveArticleImages) eachSave(item *entity.Article) func(i int, sn *goque
 			sn.SetAttr("height", strconv.Itoa(height))
 		}
 
-		// 上传缩略图
-		if item.Thumbnail == "" && size.Width >= s.ThumbMinWidth && size.Height >= s.ThumbMinHeight {
-			// 直接把内容中的图片保存成缩略图
-			if err = s.uploadThumbnail(item, file, hashSrc+"_thumbnail", imageType.Extension, imageType.MIME.Value); err != nil {
-				s.ctx.Log.Warn("upload thumbnail error", s.logInfo(item, src, err)...)
-				return
-			}
+		// 如果文章还没有缩略图，直接使用第一张图片作为缩略图
+		if item.Thumbnail == "" {
+			item.Thumbnail = uploadURL
 		}
 	}
 }
@@ -1016,6 +1018,7 @@ func (s *SaveArticleImages) applyWatermark(file []byte) ([]byte, error) {
 		Opacity:     float64(s.WatermarkOpacity) / 100.0,
 		Margin:      s.WatermarkMargin,
 		TileSpacing: s.WatermarkTileSpacing,
+		MinWidth:    s.WatermarkMinWidth,
 	}
 
 	// 根据类型设置水印
@@ -1027,7 +1030,7 @@ func (s *SaveArticleImages) applyWatermark(file []byte) ([]byte, error) {
 		watermarkConfig.Type = imagex.WatermarkTypeText
 		return imagex.New().
 			SetWatermarkConfig(watermarkConfig).
-			SetTextWatermark(s.WatermarkText, s.WatermarkFontSize, s.WatermarkFontColor, s.WatermarkTextRotate).
+			SetTextWatermark(s.WatermarkText, s.WatermarkFontSize, s.WatermarkFontColor, s.WatermarkTextRotate, s.WatermarkBgColor, s.WatermarkBgRadius).
 			AddWatermarkByte(file)
 
 	case "image":

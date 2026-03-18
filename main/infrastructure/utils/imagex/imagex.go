@@ -15,8 +15,10 @@ import (
 	"github.com/nfnt/resize"
 	"golang.org/x/image/font"
 	"golang.org/x/image/font/basicfont"
+	"golang.org/x/image/font/opentype"
 	"golang.org/x/image/math/fixed"
 	_ "golang.org/x/image/webp"
+	"moss/resources"
 )
 
 // WatermarkType 水印类型
@@ -48,6 +50,7 @@ type WatermarkConfig struct {
 	Opacity     float64           // 透明度 (0-1), 1为不透明
 	Margin      int               // 边距(像素),用于非中心位置
 	TileSpacing int               // 平铺间距(像素),仅在平铺模式有效
+	MinWidth    int               // 最小宽度限制(像素),只有图片宽度大于等于此值才添加水印
 }
 
 // TextWatermarkConfig 文字水印配置
@@ -57,6 +60,8 @@ type TextWatermarkConfig struct {
 	FontSize    int    // 字体大小(像素)
 	FontColor   string // 字体颜色 (十六进制,如 "#FF0000")
 	RotateAngle int    // 旋转角度(度),0表示不旋转
+	BgColor     string // 背景颜色 (十六进制,如 "#000000"), 空字符串表示无背景
+	BgRadius    int    // 背景圆角半径(像素),0表示无圆角
 }
 
 // ImageWatermarkConfig 图片水印配置
@@ -203,6 +208,53 @@ func ComputeScale(width, height, maxWidth, maxHeight int) (int, int) {
 	return width, height
 }
 
+// drawRoundedRect 绘制圆角矩形
+func drawRoundedRect(img *image.RGBA, x, y, width, height, radius int, color color.RGBA) {
+	if radius < 0 {
+		radius = 0
+	}
+	if radius > width/2 {
+		radius = width / 2
+	}
+	if radius > height/2 {
+		radius = height / 2
+	}
+
+	// 绘制四个角
+	for cy := 0; cy < radius; cy++ {
+		for cx := 0; cx < radius; cx++ {
+			// 检查点是否在圆内
+			dx := radius - cx
+			dy := radius - cy
+			if dx*dx+dy*dy <= radius*radius {
+				// 左上角
+				img.Set(x+cx, y+cy, color)
+				// 右上角
+				img.Set(x+width-cx-1, y+cy, color)
+				// 左下角
+				img.Set(x+cx, y+height-cy-1, color)
+				// 右下角
+				img.Set(x+width-cx-1, y+height-cy-1, color)
+			}
+		}
+	}
+
+	// 绘制中间区域（不包括圆角部分）
+	for row := radius; row < height-radius; row++ {
+		for col := 0; col < width; col++ {
+			img.Set(x+col, y+row, color)
+		}
+	}
+
+	// 绘制左右边缘
+	for row := 0; row < radius; row++ {
+		for col := radius; col < width-radius; col++ {
+			img.Set(x+col, y+row, color)
+			img.Set(x+col, y+height-row-1, color)
+		}
+	}
+}
+
 // SetWatermarkConfig 设置水印基础配置
 func (i *Image) SetWatermarkConfig(config *WatermarkConfig) *Image {
 	i.watermarkConfig = config
@@ -210,12 +262,14 @@ func (i *Image) SetWatermarkConfig(config *WatermarkConfig) *Image {
 }
 
 // SetTextWatermark 设置文字水印参数
-func (i *Image) SetTextWatermark(text string, fontSize int, fontColor string, rotateAngle int) *Image {
+func (i *Image) SetTextWatermark(text string, fontSize int, fontColor string, rotateAngle int, bgColor string, bgRadius int) *Image {
 	i.textWatermark = &TextWatermarkConfig{
 		Text:        text,
 		FontSize:    fontSize,
 		FontColor:   fontColor,
 		RotateAngle: rotateAngle,
+		BgColor:     bgColor,
+		BgRadius:    bgRadius,
 	}
 	return i
 }
@@ -234,6 +288,15 @@ func (i *Image) SetImageWatermark(imageData []byte, scaleRatio float64, rotateAn
 func (i *Image) AddWatermark(img image.Image) (image.Image, error) {
 	if i.watermarkConfig == nil || !i.watermarkConfig.Enabled {
 		return img, nil
+	}
+
+	// 检查图片宽度是否满足最小宽度要求
+	if i.watermarkConfig.MinWidth > 0 {
+		bounds := img.Bounds()
+		imgWidth := bounds.Dx()
+		if imgWidth < i.watermarkConfig.MinWidth {
+			return img, nil
+		}
 	}
 
 	switch i.watermarkConfig.Type {
@@ -285,14 +348,133 @@ func (i *Image) AddTextWatermark(img image.Image) (image.Image, error) {
 		fontColor = color.RGBA{255, 255, 255, 255} // 默认白色
 	}
 
-	// 设置字体
-	face := basicfont.Face7x13
+	// 加载字体文件
+	fontBytes, err := resources.App.ReadFile("app/comic.ttf")
+	if err != nil {
+		// 回退到基础字体
+		face := basicfont.Face7x13
+		fontSize := textConfig.FontSize
+		if fontSize < 12 {
+			fontSize = 12
+		}
+
+		fgCol := color.NRGBA{
+			R: uint8(fontColor.R),
+			G: uint8(fontColor.G),
+			B: uint8(fontColor.B),
+			A: uint8(config.Opacity * 255),
+		}
+
+		textWidth := font.MeasureString(face, textConfig.Text).Ceil()
+		textHeight := face.Metrics().Height.Ceil()
+
+		// 计算背景尺寸和位置（添加一些内边距）
+		padding := fontSize / 3
+		bgWidth := textWidth + padding*2
+		bgHeight := textHeight + padding*2
+		x, y := i.computeWatermarkPosition(bounds.Dx(), bounds.Dy(), bgWidth, bgHeight)
+
+		// 绘制背景
+		if textConfig.BgColor != "" {
+			bgColor, err := parseHexColor(textConfig.BgColor)
+			if err == nil {
+				bgColorWithAlpha := color.RGBA{
+					R: bgColor.R,
+					G: bgColor.G,
+					B: bgColor.B,
+					A: uint8(config.Opacity * 255),
+				}
+				drawRoundedRect(rgba, x, y, bgWidth, bgHeight, textConfig.BgRadius, bgColorWithAlpha)
+			}
+		}
+
+		// 绘制文字（在背景上垂直居中）
+		textX := x + padding
+		textY := y + padding + face.Metrics().Ascent.Ceil()
+
+		drawer := font.Drawer{
+			Dst:  rgba,
+			Src:  image.NewUniform(fgCol),
+			Face: face,
+			Dot:  fixed.Point26_6{X: fixed.I(textX), Y: fixed.I(textY)},
+		}
+		drawer.DrawString(textConfig.Text)
+
+		return rgba, nil
+	}
+
+	// 解析字体
+	opFont, err := opentype.Parse(fontBytes)
+	if err != nil {
+		// 回退到基础字体
+		face := basicfont.Face7x13
+		fontSize := textConfig.FontSize
+		if fontSize < 12 {
+			fontSize = 12
+		}
+
+		fgCol := color.NRGBA{
+			R: uint8(fontColor.R),
+			G: uint8(fontColor.G),
+			B: uint8(fontColor.B),
+			A: uint8(config.Opacity * 255),
+		}
+
+		textWidth := font.MeasureString(face, textConfig.Text).Ceil()
+		textHeight := face.Metrics().Height.Ceil()
+
+		// 计算背景尺寸和位置（添加一些内边距）
+		padding := fontSize / 3
+		bgWidth := textWidth + padding*2
+		bgHeight := textHeight + padding*2
+		x, y := i.computeWatermarkPosition(bounds.Dx(), bounds.Dy(), bgWidth, bgHeight)
+
+		// 绘制背景
+		if textConfig.BgColor != "" {
+			bgColor, err := parseHexColor(textConfig.BgColor)
+			if err == nil {
+				bgColorWithAlpha := color.RGBA{
+					R: bgColor.R,
+					G: bgColor.G,
+					B: bgColor.B,
+					A: uint8(config.Opacity * 255),
+				}
+				drawRoundedRect(rgba, x, y, bgWidth, bgHeight, textConfig.BgRadius, bgColorWithAlpha)
+			}
+		}
+
+		// 绘制文字（在背景上垂直居中）
+		textX := x + padding
+		textY := y + padding + face.Metrics().Ascent.Ceil()
+
+		drawer := font.Drawer{
+			Dst:  rgba,
+			Src:  image.NewUniform(fgCol),
+			Face: face,
+			Dot:  fixed.Point26_6{X: fixed.I(textX), Y: fixed.I(textY)},
+		}
+		drawer.DrawString(textConfig.Text)
+
+		return rgba, nil
+	}
+
+	// 创建可缩放字体
 	fontSize := textConfig.FontSize
 	if fontSize < 12 {
 		fontSize = 12
 	}
 
-	// 使用基础字体,设置透明度
+	face, err := opentype.NewFace(opFont, &opentype.FaceOptions{
+		Size:    float64(fontSize),
+		DPI:     72,
+		Hinting: font.HintingFull,
+	})
+	if err != nil {
+		// 回退到基础字体
+		face = basicfont.Face7x13
+	}
+
+	// 使用字体,设置透明度
 	fgCol := color.NRGBA{
 		R: uint8(fontColor.R),
 		G: uint8(fontColor.G),
@@ -302,17 +484,37 @@ func (i *Image) AddTextWatermark(img image.Image) (image.Image, error) {
 
 	// 计算文字尺寸
 	textWidth := font.MeasureString(face, textConfig.Text).Ceil()
-	textHeight := fontSize
+	textHeight := face.Metrics().Height.Ceil()
 
-	// 计算水印位置
-	x, y := i.computeWatermarkPosition(bounds.Dx(), bounds.Dy(), textWidth, textHeight)
+	// 计算背景尺寸和位置（添加一些内边距）
+	padding := fontSize / 3
+	bgWidth := textWidth + padding*2
+	bgHeight := textHeight + padding*2
+	x, y := i.computeWatermarkPosition(bounds.Dx(), bounds.Dy(), bgWidth, bgHeight)
 
-	// 绘制文字
+	// 绘制背景
+	if textConfig.BgColor != "" {
+		bgColor, err := parseHexColor(textConfig.BgColor)
+		if err == nil {
+			bgColorWithAlpha := color.RGBA{
+				R: bgColor.R,
+				G: bgColor.G,
+				B: bgColor.B,
+				A: uint8(config.Opacity * 255),
+			}
+			drawRoundedRect(rgba, x, y, bgWidth, bgHeight, textConfig.BgRadius, bgColorWithAlpha)
+		}
+	}
+
+	// 绘制文字（在背景上垂直居中）
+	textX := x + padding
+	textY := y + padding + face.Metrics().Ascent.Ceil()
+
 	drawer := font.Drawer{
 		Dst:  rgba,
 		Src:  image.NewUniform(fgCol),
 		Face: face,
-		Dot:  fixed.Point26_6{X: fixed.I(x), Y: fixed.I(y + textHeight)},
+		Dot:  fixed.Point26_6{X: fixed.I(textX), Y: fixed.I(textY)},
 	}
 	drawer.DrawString(textConfig.Text)
 

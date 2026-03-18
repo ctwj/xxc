@@ -1,179 +1,173 @@
 <template>
-  <Toolbar
-      ref="toolbarRef"
-      class="toolbar"
-      :class="{dark:store.dark}"
-      :editor="editorRef"
-      :defaultConfig="toolbarConfig"
-      mode="default"
-  />
-
   <Editor
-      class="overflow-y-hidden editor"
+      api-key="5pfu2qh1f87sn457oomloc7pfvx7uvdp4ot6xacn1v1s8lks"
+      v-model="content"
+      :init="editorConfig"
+      :disabled="disabled"
+      :api-key="apiKey"
+      class="tinymce-editor"
       :class="{dark:store.dark}"
-      :style="{height: editorHeight}"
-      v-model="valueHtml"
-      :defaultConfig="editorConfig"
-      mode="default"
-      @onCreated="handleCreated"
   />
+  <div class="absolute z-5 bottom-2 right-3 cursor-pointer opacity-10 hover:opacity-20 hover:text-blue-800 transition"
+       :class="{'hover:text-white':store.dark}" @click="visible = true">
+    <icon-code-square :size="50" />
+  </div>
+  <a-modal width="96%" v-model:visible="visible" @cancel="modalClose" unmount-on-close
+           modal-class="codeModal"
+           :mask-style="{backdropFilter: 'blur(2px)'}"
+           :modal-style="{height:'96%',padding:'10px',backgroundColor:store.dark ? '#282c34':'#f5f5f5'}"
+           :body-style="{height:'100%',overflow:'hidden'}"
+           simple
+           :footer="false"
+  >
+    <ContentHtmlCode ref="codeRef" />
+    <div class="cursor-pointer absolute right-1 top-1 opacity-10 hover:opacity-20 hover:text-blue-800 transition"
+         :class="{'opacity-20 hover:text-white':store.dark}" @click="modalClose">
+      <icon-close-circle :size="40" />
+    </div>
+  </a-modal>
 </template>
 
-
 <script setup>
+  import {inject, ref, watch, onBeforeUnmount, computed } from 'vue'
+  import Editor from '@tinymce/tinymce-vue'
+  import ContentHtmlCode from './ContentHtmlCode.vue'
+  import { useStore } from "@/store"
+  import { upload } from "@/api"
+  import { t } from "@/locale"
 
-    import '@wangeditor/editor/dist/css/style.css'
-    import {onBeforeUnmount, ref, shallowRef, inject, computed, watch, onMounted} from 'vue'
-    import { Editor, Toolbar } from '@wangeditor/editor-for-vue'
-    import { i18nChangeLanguage,i18nAddResources } from '@wangeditor/editor'
-    import {useElementSize} from '@vueuse/core'
-    import {t} from "@/locale";
-    import {useStore} from "@/store";
-    import {upload} from "@/api";
-    import { localeList } from "@/locale"
+  const store = useStore()
+  const record = inject('record')
+  const content = ref('')
+  const editorRef = ref(null)
+  const disabled = ref(false)
+  const visible = ref(false)
+  const codeRef = ref(null)
 
-
-
-
-    const store = useStore()
-    const record = inject('record')
-    const valueHtml = ref()
-    const editorRef = shallowRef()
-    const toolbarRef = ref()
-    const { height:toolbarHeight } = useElementSize(toolbarRef)
-    const editorHeight = computed(()=>'calc(100% - '+(toolbarHeight.value + 2)+'px)')
-
-    const toolbarConfig = {}
-    const editorConfig = { placeholder: t('content')+' ......',  MENU_CONF: {} }
-
-    const uploadFun = (file, insertFn)=>{
-      let formData = new FormData()
-      formData.append("file",file)
-      upload(formData).then((resp)=>{
-        if(!resp.success || resp.data.length === 0) return
-        insertFn(resp.data[0], '', '')
+  // TinyMCE 配置
+  const apiKey = 'no-api-key' // 使用无 API Key 模式（仅限功能）
+  const editorConfig = {
+    height: '100%',
+    menubar: false,
+    language: store.locale === 'zh-cn' ? 'zh_CN' : 'en',
+    plugins: [
+      'advlist', 'autolink', 'lists', 'link', 'image', 'charmap', 'preview',
+      'anchor', 'searchreplace', 'visualblocks', 'code', 'fullscreen',
+      'insertdatetime', 'media', 'table', 'help', 'wordcount'
+    ],
+    toolbar: [
+      'undo redo | formatselect | bold italic underline strikethrough | forecolor backcolor | removeformat | ' +
+      'alignleft aligncenter alignright alignjustify | ' +
+      'bullist numlist outdent indent | ' +
+      'link unlink | image media | code | fullscreen | help'
+    ],
+    toolbar_mode: 'wrap',
+    branding: false,
+    promotion: false,
+    // 关键配置：允许所有 HTML 标签和属性
+    valid_elements: '*[*]',
+    extended_valid_elements: '@[id|class|style|data-*]',
+    // 图片上传配置
+    images_upload_handler: (blobInfo, success, failure) => {
+      const formData = new FormData()
+      formData.append('file', blobInfo.blob(), blobInfo.filename())
+      upload(formData).then((resp) => {
+        if (!resp.success || resp.data.length === 0) {
+          failure('上传失败')
+          return
+        }
+        success(resp.data[0])
+      }).catch(() => {
+        failure('上传失败')
       })
+    },
+    // 自动调整高度
+    autoresize_min_height: 300,
+    autoresize_bottom_margin: 20,
+    // 占位符
+    placeholder: t('content') + ' ......',
+    // 深色主题
+    skin: store.dark ? 'oxide-dark' : 'oxide',
+    content_style: store.dark ? 'body { background-color: #282c34; color: #9db1c5; }' : 'body { background-color: #ffffff; }'
+  }
+
+  // 监听文章内容变化，同步到编辑器
+  watch(() => record.value.content, (newContent) => {
+    if (newContent !== content.value) {
+      content.value = newContent
     }
+  })
 
-    editorConfig.MENU_CONF['uploadVideo'] = {
-      customUpload:uploadFun,
+  // 监听编辑器内容变化，同步到 record
+  watch(content, (newContent) => {
+    if (newContent !== record.value.content) {
+      record.value.content = newContent
     }
-    editorConfig.MENU_CONF['uploadImage'] = {
-      customUpload:uploadFun,
-    }
+  })
 
-    watch(()=>record.value.content, (val)=>{ valueHtml.value = val })
-    watch(valueHtml, ()=>{ record.value.content = valueHtml.value })
-    watch(()=>store.locale, ()=> setLang())
+  function modalClose() {
+    visible.value = false
+    if (codeRef.value) codeRef.value.setContent()
+  }
 
-    onBeforeUnmount(() => {
-      const editor = editorRef.value
-      if (editor == null) return
-      editor.destroy()
-    })
+  // 暴露方法供外部调用
+  function getContent() {
+    return content.value
+  }
 
-    function handleCreated(editor) {
-      editorRef.value = editor
-      valueHtml.value = record.value.content
-    }
-
-    // 添加新语言，如日语 ja
-    for(let key in localeList){
-      i18nAddResources(key.replace('-','_'), localeList[key].lang.wangEditor)
-    }
-
-    setLang()
-    function setLang(){
-      i18nChangeLanguage(store.locale.replace('-','_')) // 语言key不能使用中横向分割，否则不识别
-      // switch (store.locale){
-      //   case 'zh-cn':
-      //     i18nChangeLanguage('zh-CN')
-      //     break;
-      //   default:
-      //     i18nChangeLanguage('en')
-      // }
-    }
-
+  defineExpose({
+    getContent
+  })
 </script>
 
 <style scoped>
-.toolbar,
-.editor{
+.tinymce-editor {
   border: 1px solid var(--color-fill-2);
 }
-.editor{
-  border-top: none;
-}
-.editor :deep(.w-e-text-container div[data-slate-editor]){
-  min-height: 90% !important;
-}
-.toolbar.dark{
-  border: none;
-  border-bottom: 3px solid #282c34;
-}
-.editor.dark{
+
+.tinymce-editor.dark {
   border: none;
   border-radius: 3px;
   border-bottom: 1px solid #282c34;
 }
+</style>
 
-.editor.dark :deep(pre>code){text-shadow:0 1px #000}
-.editor.dark :deep(pre>code .token.punctuation){color:#999}
-.editor.dark :deep(pre>code .token.tag){color: #f85eb4}
-.editor.dark :deep(pre>code .token.string){color: #a9f118}
-.editor.dark :deep(pre>code .token.url){color: #eaa452}
-.editor.dark :deep(pre>code .token.keyword){color: #36baf3}
-.editor.dark :deep(pre>code .token.function){color: #f36481}
-.editor.dark :deep(pre>code .token.variable){color: #f8b131}
-/*
- https://github.com/wangeditor-team/wangEditor/blob/master/packages/editor/src/assets/index.less
-*/
-
-.toolbar,
-.editor{
-  --w-e-toolbar-bg-color:  var(--color-fill-2);
+<style>
+/* TinyMCE 深色主题 */
+.tinymce-editor.dark .tox-editor-header {
+  background-color: #282c34 !important;
+  border-color: #2d3239 !important;
 }
-.toolbar.dark,
-.editor.dark{
-
-  /* textarea - css vars */
-  --w-e-textarea-bg-color: var(--color-fill-2);
-  --w-e-textarea-color: #9db1c5;
-
-  --w-e-textarea-border-color: #6b7f94;
-  --w-e-textarea-slight-color: #d4d4d4;
-  --w-e-textarea-slight-bg-color: #2a2f3a;
-  --w-e-textarea-slight-border-color: #2a2f3a;
-  --w-e-textarea-selected-border-color: #c3ddfd;
-  --w-e-textarea-handler-bg-color: #4290f7;
-
-  /* toolbar - css vars */
-  --w-e-toolbar-color: #b6c5d4;
-  --w-e-toolbar-bg-color: #282c34;
-  --w-e-toolbar-border-color: #2d3239;
-  --w-e-toolbar-active-color: #fff;
-  --w-e-toolbar-active-bg-color: #21252b;
-  --w-e-toolbar-disabled-color: #757c83;
-
-  /* modal - css vars */
-  --w-e-modal-button-bg-color: #353a44;
-  --w-e-modal-button-border-color: #353a44;
-
+.tinymce-editor.dark .tox-toolbar,
+.tinymce-editor.dark .tox-toolbar__overflow,
+.tinymce-editor.dark .tox-toolbar__primary {
+  background-color: #282c34 !important;
 }
-
-.editor :deep(h1){
-  font-size: 30px;
+.tinymce-editor.dark .tox-tbtn {
+  color: #b6c5d4;
 }
-.editor :deep(h2){
-  font-size: 24px;
+.tinymce-editor.dark .tox-tbtn--enabled:hover {
+  background-color: #21252b !important;
+  color: #fff;
 }
-.editor :deep(h3){
-  font-size: 20px;
+.tinymce-editor.dark .tox-tbtn--enabled.tox-tbtn--active {
+  background-color: #21252b !important;
+  color: #fff;
 }
-.editor :deep(h4){
-  font-size: 18px;
+.tinymce-editor.dark .tox-edit-area__iframe {
+  background-color: #282c34 !important;
 }
-.editor :deep(h5){
-  font-size: 16px;
+.tinymce-editor.dark .tox-statusbar {
+  background-color: #282c34 !important;
+  border-color: #2d3239 !important;
+}
+.tinymce-editor.dark .tox-statusbar__path-item {
+  color: #757c83;
+}
+.tinymce-editor.dark .tox-statusbar__wordcount {
+  color: #757c83;
+}
+.tinymce-editor.dark .tox-split-button {
+  background-color: #282c34 !important;
 }
 </style>

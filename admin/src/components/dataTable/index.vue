@@ -222,6 +222,14 @@
   function postSubmit(){
     formRef.value.validate((errors)=>{
       if(errors!==undefined) return
+      // 如果是文章模块，在保存前获取编辑器内容
+      if(modelName === 'article' && postComponent.value && postComponent.value.getContent) {
+        const content = postComponent.value.getContent()
+        console.log('保存的文章内容:', content) // 调试输出
+        if(content) {
+          postRecord.value.content = content
+        }
+      }
       if(postRecord.value.id > 0) runUpdate(modelName, postRecord.value)
       else runCreate(modelName, postRecord.value)
     })

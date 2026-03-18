@@ -61,7 +61,19 @@
                 <a-input class="input input_extends" v-model="item.key" /><span class="ml-2">:</span>
               </div>
             </template>
-              <a-textarea class="input input_extends" :auto-size="{minRows:1,maxRows:5}" v-model="item.value" />
+            <!-- 如果 value 是布尔类型，显示为只读标签 -->
+            <div v-if="typeof item.value === 'boolean'" class="w-full">
+              <a-tag :color="item.value ? 'green' : 'red'">{{ item.value ? 'true' : 'false' }}</a-tag>
+            </div>
+            <!-- 如果 value 是对象类型，显示格式化的 JSON（只读） -->
+            <div v-else-if="typeof item.value === 'object' && item.value !== null" class="w-full">
+              <div class="relative">
+                <pre class="json-display">{{ JSON.stringify(item.value, null, 2) }}</pre>
+                <a-tag color="arcoblue" size="small" class="absolute top-0 right-0">只读</a-tag>
+              </div>
+            </div>
+            <!-- 如果 value 是字符串类型，可编辑 -->
+            <a-textarea v-else class="input input_extends" :auto-size="{minRows:1,maxRows:5}" v-model="item.value" />
               <a-button class="ml-1" type="text" @click="record.extends.splice(index,1)"><template #icon><icon-close-circle :stroke-width="3" /></template></a-button>
           </a-form-item>
         </a-form>
@@ -84,6 +96,10 @@
                 <pre class="json-display">{{ JSON.stringify(item.value, null, 2) }}</pre>
                 <a-tag color="arcoblue" size="small" class="absolute top-0 right-0">只读</a-tag>
               </div>
+            </div>
+            <!-- 如果 value 是布尔类型，显示为只读文本 -->
+            <div v-else-if="typeof item.value === 'boolean'" class="w-full">
+              <a-tag :color="item.value ? 'green' : 'red'">{{ item.value ? 'true' : 'false' }}</a-tag>
             </div>
             <!-- 如果 value 是字符串类型，可编辑 -->
             <a-textarea v-else class="input input_extends" :auto-size="{minRows:1,maxRows:5}" v-model="item.value" />

@@ -161,6 +161,13 @@
           <a-form-item label="旋转角度(度)">
             <a-slider v-model="data.watermark_text_rotate" :min="-45" :max="45" show-input />
           </a-form-item>
+          <a-divider>背景设置</a-divider>
+          <a-form-item label="背景颜色">
+            <a-color-picker v-model="data.watermark_bg_color" :show-history="true" />
+          </a-form-item>
+          <a-form-item label="圆角半径(像素)">
+            <a-input-number v-model="data.watermark_bg_radius" class="numberInput" :min="0" :max="50" />
+          </a-form-item>
         </template>
 
         <!-- 图片水印配置 -->
@@ -179,6 +186,9 @@
 
         <!-- 通用配置 -->
         <a-divider>通用设置</a-divider>
+        <a-form-item label="最小宽度限制(像素)" help="只有图片宽度大于等于此值才添加水印，0表示不限制">
+          <a-input-number v-model="data.watermark_min_width" class="numberInput" :min="0" :max="5000" />
+        </a-form-item>
         <a-form-item label="水印位置">
           <a-select v-model="data.watermark_position" class="w-full">
             <a-option value="top_left">左上</a-option>
