@@ -11,6 +11,8 @@ import (
 	"mime/multipart"
 	"moss/domain/config"
 	"moss/domain/core/entity"
+	"moss/domain/core/repository"
+	repoContextPkg "moss/domain/core/repository/context"
 	"moss/domain/core/service"
 	pluginEntity "moss/domain/support/entity"
 	"moss/infrastructure/persistent/storage"
@@ -33,6 +35,9 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/time/rate"
 )
+
+// 使用别名避免冲突
+type repoContext = repoContextPkg.Context
 
 // uploadTask 上传任务
 type uploadTask struct {
@@ -163,17 +168,157 @@ func NewSaveArticleImages() *SaveArticleImages {
 
 func (s *SaveArticleImages) Info() *pluginEntity.PluginInfo {
 	return &pluginEntity.PluginInfo{
-		ID:    "SaveArticleImages",
-		About: "save article images",
+		ID:         "SaveArticleImages",
+		About:      "保存文章图片（支持自动触发和手动批量处理）",
+		RunEnable:  true, // 允许手动执行
+		CronEnable: true, // 允许定时任务
+		PluginInfoPersistent: pluginEntity.PluginInfoPersistent{
+			CronStart: false, // 默认关闭，用户可手动开启
+			CronExp:   "@every 24h", // 默认每天执行一次，用户可在启用时修改
+		},
 	}
 }
 
 func (s *SaveArticleImages) Run(ctx *pluginEntity.Plugin) error {
+	if s.ctx == nil {
+		s.ctx = ctx
+	}
+
+	ctx.Log.Info("开始批量处理文章图片...")
+
+	// 查询最新的 10000 篇文章
+	queryCtx := &repoContext{
+		Limit: 10000,
+		Order: "id desc",
+	}
+
+	articles, err := repository.Article.List(queryCtx)
+	if err != nil {
+		ctx.Log.Error("查询文章列表失败", zap.Error(err))
+		return err
+	}
+
+	ctx.Log.Info("共查询到文章数量", zap.Int("count", len(articles)))
+
+	// 统计信息
+	processedCount := 0
+	skippedCount := 0
+	updatedCount := 0
+	errorCount := 0
+
+	// 遍历每篇文章
+	for i, articleBase := range articles {
+		// 每处理 10 篇文章输出一次进度
+		if (i+1)%10 == 0 || i == len(articles)-1 {
+			ctx.Log.Info("处理进度",
+				zap.Int("processed", i+1),
+				zap.Int("total", len(articles)),
+				zap.Int("skipped", skippedCount),
+				zap.Int("updated", updatedCount),
+				zap.Int("error", errorCount),
+			)
+		}
+
+		// 获取文章详情（包含内容）
+		article, err := repository.Article.Get(articleBase.ID)
+		if err != nil {
+			ctx.Log.Error("获取文章详情失败",
+				zap.Int("id", articleBase.ID),
+				zap.String("title", articleBase.Title),
+				zap.Error(err),
+			)
+			errorCount++
+			continue
+		}
+
+		processedCount++
+
+		// 检查文章是否需要处理图片
+		needsProcess := s.checkNeedsProcess(article)
+
+		if !needsProcess {
+			skippedCount++
+			continue
+		}
+
+		// 处理文章图片
+		if err := s.Save(article); err != nil {
+			ctx.Log.Error("处理文章图片失败",
+				zap.Int("id", article.ID),
+				zap.String("title", article.Title),
+				zap.Error(err),
+			)
+			errorCount++
+			continue
+		}
+
+		// 更新文章到数据库
+		if err := repository.Article.Update(article); err != nil {
+			ctx.Log.Error("更新文章失败",
+				zap.Int("id", article.ID),
+				zap.String("title", article.Title),
+				zap.Error(err),
+			)
+			errorCount++
+			continue
+		}
+
+		updatedCount++
+		ctx.Log.Info("文章图片处理成功",
+			zap.Int("id", article.ID),
+			zap.String("title", article.Title),
+		)
+	}
+
+	ctx.Log.Info("批量处理完成",
+		zap.Int("processed", processedCount),
+		zap.Int("skipped", skippedCount),
+		zap.Int("updated", updatedCount),
+		zap.Int("error", errorCount),
+	)
+
 	return nil
+}
+
+// checkNeedsProcess 检查文章是否需要处理图片
+func (s *SaveArticleImages) checkNeedsProcess(article *entity.Article) bool {
+	// 解析文章内容中的图片
+	doc, err := goquery.NewDocumentFromReader(strings.NewReader(article.Content))
+	if err != nil {
+		return false
+	}
+
+	// 检查是否有需要处理的图片
+	needsProcess := false
+	doc.Find("img").Each(func(i int, selection *goquery.Selection) {
+		src, ok := selection.Attr("src")
+		if !ok || src == "" {
+			return
+		}
+
+		// 如果图片不在当前上传域，则需要处理
+		if !s.isCurrentUploadDomain(src) {
+			needsProcess = true
+			return
+		}
+	})
+
+	// 检查封面是否需要处理
+	if article.Thumbnail != "" && !s.isCurrentUploadDomain(article.Thumbnail) {
+		needsProcess = true
+	}
+
+	return needsProcess
 }
 
 func (s *SaveArticleImages) Load(ctx *pluginEntity.Plugin) error {
 	s.ctx = ctx
+
+	// 如果数据库中的 CronExp 为空，设置默认值
+	if ctx.Info.CronEnable && ctx.Info.CronExp == "" {
+		ctx.Info.CronExp = "@every 24h"
+	}
+
 	service.Article.AddCreateBeforeEvents(s)
 	service.Article.AddUpdateBeforeEvents(s)
 

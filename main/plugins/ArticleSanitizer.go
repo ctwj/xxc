@@ -18,7 +18,15 @@ type ArticleSanitizer struct {
 	AddTargetBlankToFullyQualifiedLinks bool `json:"add_target_blank_to_fully_qualified_links"` // a标签增加 _blank
 	RemoveLinks                         bool `json:"remove_links"`                              // 删除a标签
 	RemoveLinksHoldLength               int  `json:"remove_links_hold_length"`                  // 删除a标签时，保留内容的最小字符数，字符数小于此设置的，去掉a标签但保留内容
+	EnableTextReplace                   bool `json:"enable_text_replace"`                       // 是否启用文本替换
+	TextReplacements                    []TextReplacement `json:"text_replacements"`               // 文本替换规则列表
 	ctx                                 *pluginEntity.Plugin
+}
+
+// TextReplacement 文本替换规则
+type TextReplacement struct {
+	Source string `json:"source"` // 要替换的文本
+	Target string `json:"target"` // 替换后的文本
 }
 
 func NewArticleSanitizer() *ArticleSanitizer {
@@ -30,6 +38,8 @@ func NewArticleSanitizer() *ArticleSanitizer {
 		RequireNoFollowOnLinks:              true,
 		RemoveLinks:                         false,
 		RemoveLinksHoldLength:               6,
+		EnableTextReplace:                   false,
+		TextReplacements:                    []TextReplacement{},
 	}
 }
 
@@ -81,6 +91,15 @@ func (a *ArticleSanitizer) sanitize(item *entity.Article, action string) error {
 	item.Content = p.Sanitize(item.Content)
 
 	item.Content = a.injectP(item.Content)
+
+	// 文本替换
+	if a.EnableTextReplace && len(a.TextReplacements) > 0 {
+		item.Content = a.replaceText(item.Content)
+		a.ctx.Log.Debug("应用文本替换规则",
+			zap.Int("rules", len(a.TextReplacements)),
+			zap.String("action", action))
+	}
+
 	//a.ctx.Log.Info(fmt.Sprintf("%s sanitize success", item.Title))
 	return nil
 }
@@ -129,6 +148,23 @@ func (a *ArticleSanitizer) removeLinks(item *entity.Article) error {
 	}
 	item.Content = content
 	return nil
+}
+
+// replaceText 替换文本内容（简单的字符串替换）
+func (a *ArticleSanitizer) replaceText(content string) string {
+	if len(a.TextReplacements) == 0 {
+		return content
+	}
+
+	// 直接在内容上进行字符串替换
+	result := content
+	for _, repl := range a.TextReplacements {
+		if repl.Source != "" && repl.Source != repl.Target {
+			result = strings.ReplaceAll(result, repl.Source, repl.Target)
+		}
+	}
+
+	return result
 }
 
 func (a *ArticleSanitizer) Run(ctx *pluginEntity.Plugin) (err error) {

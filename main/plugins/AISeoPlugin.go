@@ -95,6 +95,7 @@ func (p *AISeoPlugin) Run(ctx *pluginEntity.Plugin) error {
 	p.ctx = ctx
 
 	if !p.Enable {
+		p.ctx.Log.Warn("AISeoPlugin is disabled")
 		return nil
 	}
 
@@ -104,6 +105,11 @@ func (p *AISeoPlugin) Run(ctx *pluginEntity.Plugin) error {
 		return errors.New("API URL or API Key is not configured")
 	}
 
+	p.ctx.Log.Info("AISeoPlugin started",
+		zap.String("api_url", p.ApiURL),
+		zap.String("model", p.Model),
+		zap.Bool("force_regenerate", p.ForceRegenerate))
+
 	// 获取未生成的文章
 	articles, err := p.getUngeneratedArticles(p.BatchSize)
 	if err != nil {
@@ -112,6 +118,7 @@ func (p *AISeoPlugin) Run(ctx *pluginEntity.Plugin) error {
 	}
 
 	if len(articles) == 0 {
+		p.ctx.Log.Info("No articles to process")
 		return nil
 	}
 
@@ -220,8 +227,17 @@ func (p *AISeoPlugin) getUngeneratedArticles(limit int) ([]*entity.Article, erro
 func (p *AISeoPlugin) processArticle(article *entity.Article) error {
 	// 检查是否已生成
 	if !p.ForceRegenerate && p.isArticleGenerated(article) {
+		p.ctx.Log.Debug("Article already generated, skipping",
+			zap.Int("article_id", article.ID),
+			zap.String("title", article.Title))
 		return nil
 	}
+
+	p.ctx.Log.Info("Processing article",
+		zap.Int("article_id", article.ID),
+		zap.String("title", article.Title),
+		zap.String("current_keywords", article.Keywords),
+		zap.String("current_description", article.Description))
 
 	// 调用 AI 生成 SEO 内容
 	result, err := p.generateSEOContent(article)
@@ -260,6 +276,8 @@ func (p *AISeoPlugin) processArticle(article *entity.Article) error {
 		zap.Int("article_id", article.ID),
 		zap.String("title", article.Title),
 		zap.Int("keywords_count", len(result.Keywords)),
+		zap.String("new_keywords", strings.Join(result.Keywords, ",")),
+		zap.String("new_description", result.Description),
 		zap.Int("tags_count", len(result.Tags)),
 		zap.Bool("content_rewrited", result.ContentRewrited),
 	)
@@ -289,6 +307,9 @@ func (p *AISeoPlugin) generateSEOContent(article *entity.Article) (*AISeoResult,
 		} else if categoryID > 0 {
 			result.CategoryID = categoryID
 			result.CategoryChanged = true
+			p.ctx.Log.Info("Category recommended",
+				zap.Int("article_id", article.ID),
+				zap.Int("category_id", categoryID))
 		}
 	}
 
@@ -298,6 +319,13 @@ func (p *AISeoPlugin) generateSEOContent(article *entity.Article) (*AISeoResult,
 		p.ctx.Log.Warn("Failed to extract keywords", zap.Error(err))
 	} else if len(keywords) > 0 {
 		result.Keywords = keywords
+		p.ctx.Log.Info("Keywords extracted",
+			zap.Int("article_id", article.ID),
+			zap.Int("count", len(keywords)),
+			zap.Strings("keywords", keywords))
+	} else {
+		p.ctx.Log.Warn("No keywords extracted",
+			zap.Int("article_id", article.ID))
 	}
 
 	// 3. 描述优化
@@ -306,6 +334,9 @@ func (p *AISeoPlugin) generateSEOContent(article *entity.Article) (*AISeoResult,
 		p.ctx.Log.Warn("Failed to optimize description", zap.Error(err))
 	} else if description != "" {
 		result.Description = description
+		p.ctx.Log.Info("Description optimized",
+			zap.Int("article_id", article.ID),
+			zap.String("description", description))
 	}
 
 	// 4. 内容改写
@@ -316,6 +347,8 @@ func (p *AISeoPlugin) generateSEOContent(article *entity.Article) (*AISeoResult,
 		} else if content != "" {
 			article.Content = content
 			result.ContentRewrited = true
+			p.ctx.Log.Info("Content rewritten",
+				zap.Int("article_id", article.ID))
 		}
 	}
 
@@ -325,6 +358,9 @@ func (p *AISeoPlugin) generateSEOContent(article *entity.Article) (*AISeoResult,
 		p.ctx.Log.Warn("Failed to generate tags", zap.Error(err))
 	} else if len(tags) > 0 {
 		result.Tags = tags
+		p.ctx.Log.Info("Tags generated",
+			zap.Int("article_id", article.ID),
+			zap.Strings("tags", tags))
 	}
 
 	return result, nil
@@ -401,6 +437,10 @@ func (p *AISeoPlugin) recommendCategory(article *entity.Article) (int, error) {
 
 // extractKeywords 提取关键词
 func (p *AISeoPlugin) extractKeywords(article *entity.Article) ([]string, error) {
+	p.ctx.Log.Debug("Starting keyword extraction",
+		zap.Int("article_id", article.ID),
+		zap.String("title", article.Title))
+
 	// 构建提示词
 	prompt := fmt.Sprintf(`你是一个 SEO 关键词提取专家。请从以下文章中提取与内容高度相关、符合 SEO 优化原则的关键词。
 
@@ -422,10 +462,19 @@ func (p *AISeoPlugin) extractKeywords(article *entity.Article) ([]string, error)
 	)
 
 	// 调用 AI API
+	p.ctx.Log.Debug("Calling AI API for keyword extraction",
+		zap.Int("article_id", article.ID))
 	response, err := p.callAI(prompt)
 	if err != nil {
+		p.ctx.Log.Error("AI API call failed for keyword extraction",
+			zap.Int("article_id", article.ID),
+			zap.Error(err))
 		return nil, err
 	}
+
+	p.ctx.Log.Debug("AI API response received for keyword extraction",
+		zap.Int("article_id", article.ID),
+		zap.String("response", response))
 
 	// 解析响应
 	keywords := strings.Split(response, ",")
@@ -441,11 +490,19 @@ func (p *AISeoPlugin) extractKeywords(article *entity.Article) ([]string, error)
 		}
 	}
 
+	p.ctx.Log.Debug("Keywords parsed",
+		zap.Int("article_id", article.ID),
+		zap.Int("count", len(result)),
+		zap.Strings("keywords", result))
+
 	return result, nil
 }
 
 // optimizeDescription 优化描述
 func (p *AISeoPlugin) optimizeDescription(article *entity.Article, keywords []string) (string, error) {
+	p.ctx.Log.Debug("Starting description optimization",
+		zap.Int("article_id", article.ID))
+
 	// 构建提示词
 	keywordsStr := strings.Join(keywords, "、")
 	prompt := fmt.Sprintf(`你是一个 SEO 描述生成专家。请根据以下文章标题、内容和关键词，生成一个优化的 SEO 描述。
@@ -468,6 +525,9 @@ func (p *AISeoPlugin) optimizeDescription(article *entity.Article, keywords []st
 	// 调用 AI API
 	response, err := p.callAI(prompt)
 	if err != nil {
+		p.ctx.Log.Error("AI API call failed for description optimization",
+			zap.Int("article_id", article.ID),
+			zap.Error(err))
 		return "", err
 	}
 
@@ -477,37 +537,60 @@ func (p *AISeoPlugin) optimizeDescription(article *entity.Article, keywords []st
 		response = string(runes[:250])
 	}
 
+	p.ctx.Log.Debug("Description optimized",
+		zap.Int("article_id", article.ID),
+		zap.String("description", response))
+
 	return response, nil
 }
 
 // rewriteContent 改写内容
 func (p *AISeoPlugin) rewriteContent(article *entity.Article, keywords []string) (string, error) {
+	p.ctx.Log.Debug("Starting content rewriting",
+		zap.Int("article_id", article.ID),
+		zap.String("title", article.Title))
+
 	// 构建提示词
 	keywordsStr := strings.Join(keywords, "、")
-	prompt := fmt.Sprintf(`你是一个专业的 SEO 内容编辑。请根据给定的关键词，对以下文章进行改写，以提升其搜索引擎优化效果，同时保持原意和结构。
+	prompt := fmt.Sprintf(`你是一个专业的 SEO 内容编辑和文案创作专家。请根据给定的关键词和文章主题，对以下文章进行深度改写、扩写和优化，以大幅提升搜索引擎优化效果。
 
 文章标题：%s
 文章内容（可能包含 HTML 标签）：%s
 关键词列表（用英文逗号分隔）：%s
 
-要求：
-- 保持原文的核心意思和信息不变。
-- 保留原文中的所有图片。
-- 在文中自然地融入关键词，优化关键词的表述方式，避免生硬堆砌。
-- 改善文章的可读性和流畅性，使其对用户更友好。
-- 保留原有的 HTML 标签格式，不要改变标签结构和内容。
-- 确保改写后的内容与其他文章相比具有独特性，避免雷同。
-- 只返回改写后的完整文章内容，不要添加任何额外说明。`,
+重要要求：
+1. **内容扩写**：在保持原文核心信息的基础上，大幅扩充内容长度（至少增加30%），增加更多细节、使用场景、注意事项等有价值的信息。
+2. **文案调整**：使用更具吸引力和专业性的语言，改善文章的可读性和专业性。
+3. **差异化改写**：确保改写后的内容与原文至少有 30% 以上的文字差异，避免雷同。
+4. **关键词优化**：在文中自然地融入所有提供的关键词，每个关键词至少出现 2-3 次，避免生硬堆砌。
+5. **HTML 结构保留**：严格保留原有的 HTML 标签格式（如 <p>、<h3>、<img> 等），只修改标签内的文本内容。
+6. **图片保留**：保留原文中的所有图片标签和属性不变。
+7. **内容丰富性**：增加更多实用的信息，如使用技巧、注意事项、常见问题等，使内容更加丰富和有价值。
+8. **语言风格**：使用更生动、专业、有吸引力的语言，提升文章质量和用户体验。
+9. **结构优化**：如果原文结构较简单，可以适当增加段落和小标题，使内容层次更清晰。
+10. **独特性**：确保改写后的内容具有独特性，避免与其他文章雷同。
+
+只返回改写后的完整文章内容，不要添加任何其他文字说明。`,
 		article.Title,
 		truncateText(article.Content, 2000),
 		keywordsStr,
 	)
 
 	// 调用 AI API
+	p.ctx.Log.Debug("Calling AI API for content rewriting",
+		zap.Int("article_id", article.ID))
 	response, err := p.callAI(prompt)
 	if err != nil {
+		p.ctx.Log.Error("AI API call failed for content rewriting",
+			zap.Int("article_id", article.ID),
+			zap.Error(err))
 		return "", err
 	}
+
+	p.ctx.Log.Debug("Content rewritten successfully",
+		zap.Int("article_id", article.ID),
+		zap.Int("original_length", len(article.Content)),
+		zap.Int("new_length", len(response)))
 
 	return response, nil
 }
@@ -619,19 +702,37 @@ func (p *AISeoPlugin) callAI(prompt string) (string, error) {
 
 // updateArticle 更新文章字段
 func (p *AISeoPlugin) updateArticle(article *entity.Article, result *AISeoResult) {
+	p.ctx.Log.Debug("Updating article fields",
+		zap.Int("article_id", article.ID),
+		zap.String("old_keywords", article.Keywords),
+		zap.String("old_description", article.Description))
+
 	// 更新分类
 	if result.CategoryID > 0 {
 		article.CategoryID = result.CategoryID
+		p.ctx.Log.Debug("Category updated",
+			zap.Int("article_id", article.ID),
+			zap.Int("category_id", result.CategoryID))
 	}
 
 	// 更新关键词
 	if len(result.Keywords) > 0 {
+		oldKeywords := article.Keywords
 		article.Keywords = strings.Join(result.Keywords, ",")
+		p.ctx.Log.Info("Keywords updated",
+			zap.Int("article_id", article.ID),
+			zap.String("old_keywords", oldKeywords),
+			zap.String("new_keywords", article.Keywords))
 	}
 
 	// 更新描述
 	if result.Description != "" {
+		oldDescription := article.Description
 		article.Description = result.Description
+		p.ctx.Log.Info("Description updated",
+			zap.Int("article_id", article.ID),
+			zap.String("old_description", oldDescription),
+			zap.String("new_description", article.Description))
 	}
 
 	// 更新标签
