@@ -37,11 +37,16 @@ func (a *ArticleBase) URL() string {
 }
 
 func (a *ArticleBase) CreateTimeFormat(layouts ...string) string {
+	defer func() {
+		if r := recover(); r != nil {
+			// 捕获 panic，返回空字符串
+		}
+	}()
 	if a.CreateTime == 0 {
 		return ""
 	}
 	var layout = "2006-01-02 15:04:05"
-	if len(layouts) > 0 {
+	if len(layouts) > 0 && len(layouts[0]) > 0 {
 		layout = layouts[0]
 	}
 	return time.Unix(a.CreateTime, 0).Format(layout)

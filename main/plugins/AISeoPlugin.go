@@ -34,6 +34,9 @@ type AISeoPlugin struct {
 	// 内容改写
 	EnableRewrite bool `json:"enable_rewrite"` // 是否启用内容改写
 
+	// 自动发布
+	AutoPublish bool `json:"auto_publish"` // SEO 处理完成后自动发布文章
+
 	// 特殊分类名称
 	OtherCategoryName string `json:"other_category_name"` // 其他分类名称
 
@@ -58,6 +61,7 @@ func NewAISeoPlugin() *AISeoPlugin {
 		MinTags:           1,
 		MaxTags:           3,
 		EnableRewrite:     true,
+		AutoPublish:       false,
 		OtherCategoryName: "其他软件",
 		CronEnable:        false,
 		CronExp:           "@every 30m",
@@ -262,6 +266,16 @@ func (p *AISeoPlugin) processArticle(article *entity.Article) error {
 
 	// 标记为已生成（只有成功时才记录）
 	p.markAsGenerated(article)
+
+	// 自动发布文章
+	if p.AutoPublish {
+		oldStatus := article.Status
+		article.Status = true
+		p.ctx.Log.Info("Article auto-published",
+			zap.Int("article_id", article.ID),
+			zap.Bool("old_status", oldStatus),
+			zap.Bool("new_status", article.Status))
+	}
 
 	// 再次保存（更新 extends）
 	if err := service.Article.Update(article); err != nil {

@@ -74,6 +74,13 @@
     </template>
   </a-form-item>
 
+  <a-form-item label="Auto Publish">
+    <a-switch type="round" v-model="data.auto_publish" />
+    <template #extra>
+      <a-text type="secondary">SEO 处理完成后自动将文章状态修改为已发布</a-text>
+    </template>
+  </a-form-item>
+
   <a-form-item label="Other Category Name">
     <a-input v-model="data.other_category_name" placeholder="其他软件" />
     <template #extra>

@@ -11,7 +11,7 @@
         {{yield breadcrumb(id=Data.CategoryID)}}
         <h1 class="dute-article-title">{{ Data.Title }}</h1>
         <p class="dute-article-meta">
-            <span><i class="mr-1 icon icon-time"></i>{{ Data.CreateTimeFormat() }}</span>
+            <span><i class="mr-1 icon icon-time"></i>{{ Data.CreateTimeFormatted }}</span>
             {{ if Data.Views > 0}}
             <span class="ml-3"><i class="mr-1 icon icon-view"></i>{{ Data.Views }}</span>
             {{ end }}

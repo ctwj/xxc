@@ -43,7 +43,7 @@ func (c *Category) CreateTimeFormat(layouts ...string) string {
 		return ""
 	}
 	var layout = "2006-01-02 15:04:05"
-	if len(layouts) > 0 {
+	if len(layouts) > 0 && len(layouts) >= 1 {
 		layout = layouts[0]
 	}
 	return time.Unix(c.CreateTime, 0).Format(layout)

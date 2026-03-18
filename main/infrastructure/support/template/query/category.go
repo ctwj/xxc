@@ -80,7 +80,10 @@ func (c *Category) GetWithAncestors(id int) (res []entity.Category) {
 // GetWithParent 获取分类和其夫分类
 func (c *Category) GetWithParent(id int) (res []entity.Category) {
 	res, err := service.Category.GetWithParent(id)
-	slice.Reverse(res)
+	// 检查数组是否为空，避免 slice.Reverse 导致的越界问题
+	if len(res) > 0 {
+		slice.Reverse(res)
+	}
 	log.ErrorShortcut("template query error", err)
 	return
 }

@@ -5,6 +5,7 @@ import (
 	"moss/domain/core/repository/context"
 	"moss/domain/core/service"
 	"moss/infrastructure/support/log"
+	"go.uber.org/zap"
 )
 
 type Article struct {
@@ -64,16 +65,40 @@ func (a *Article) ListByID(ids ...int) (res []entity.ArticleBase) {
 
 // ListByCategoryID 根据分类ID查询文章列表
 func (a *Article) ListByCategoryID(ids ...int) (res []entity.ArticleBase) {
-	res, err := service.Article.ListByCategoryIds(a.context(), ids)
+	log.Info("ListByCategoryID called", zap.Int("ids_count", len(ids)), zap.Any("ids", ids))
+	// 检查分类ID是否有效
+	var validIds []int
+	for _, id := range ids {
+		if id > 0 {
+			validIds = append(validIds, id)
+		}
+	}
+	// 如果没有有效的分类ID，返回空数组
+	if len(validIds) == 0 {
+		log.Info("No valid category IDs, returning empty array")
+		return []entity.ArticleBase{}
+	}
+	res, err := service.Article.ListByCategoryIds(a.context(), validIds)
 	log.WarnShortcut("template query error", err)
 	return
 }
 
 // ListByTags 方便模板中可以直接通过tags实体调用
 func (a *Article) ListByTags(tags []entity.Tag) []entity.ArticleBase {
+	log.Info("ListByTags called", zap.Int("tags_length", len(tags)))
 	var ids []int
-	for _, tag := range tags {
-		ids = append(ids, tag.ID)
+	for i, tag := range tags {
+		log.Info("Processing tag", zap.Int("index", i), zap.Int("tag_id", tag.ID), zap.String("tag_name", tag.Name))
+		// 检查 tag 是否有效
+		if tag.ID > 0 {
+			ids = append(ids, tag.ID)
+		}
+	}
+	log.Info("Valid tag IDs", zap.Int("count", len(ids)), zap.Any("ids", ids))
+	// 如果没有有效的 tag ID，返回空数组
+	if len(ids) == 0 {
+		log.Info("No valid tag IDs, returning empty array")
+		return []entity.ArticleBase{}
 	}
 	return a.ListByTagID(ids...)
 }
