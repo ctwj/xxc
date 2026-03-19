@@ -184,6 +184,7 @@ export default {
     download_limit:'Download Limit',
     GnDownSpider:'GnDown Spider',
     AISeoPlugin:'SEO Plugin',
+    DirectLinkDownload:'Direct Link Download',
 
 
     wangEditor:{

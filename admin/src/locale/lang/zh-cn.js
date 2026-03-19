@@ -185,6 +185,7 @@ export default {
     GnDownSpider:'GnDown爬虫',
     AISeoPlugin:'SEO插件',
     ExternalLinkPlugin:'外链插件',
+    DirectLinkDownload:'直链下载转存',
 
 
 

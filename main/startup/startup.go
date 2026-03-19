@@ -57,6 +57,7 @@ func initPlugins() {
 		plugins.NewQuarkCloudTransfer(),
 		plugins.NewAISeoPlugin(),
 		plugins.NewExternalLinkPlugin(),
+		plugins.NewDirectLinkDownload(),
 	)
 
 }
