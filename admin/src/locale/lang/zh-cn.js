@@ -184,6 +184,7 @@ export default {
     download_limit:'资源下载次数限制',
     GnDownSpider:'GnDown爬虫',
     AISeoPlugin:'SEO插件',
+    ExternalLinkPlugin:'外链插件',
 
 
 

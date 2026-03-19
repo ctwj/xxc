@@ -17,7 +17,7 @@ func init() {
 type PluginTable struct {
 	ID      string `gorm:"primaryKey;type:varchar(100);" json:"id"`
 	Info    string `gorm:"type:string;"                  json:"info"`
-	Options string `gorm:"type:string;"                  json:"options"`
+	Options string `gorm:"type:text;"                    json:"options"`
 }
 
 func (PluginTable) TableName() string {

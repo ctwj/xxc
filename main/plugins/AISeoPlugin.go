@@ -48,6 +48,9 @@ type AISeoPlugin struct {
 	// 强制重新生成（手动触发时可选）
 	ForceRegenerate bool `json:"force_regenerate"` // 是否强制重新生成（忽略已有标记）
 
+	// 跳过已发布文章
+	SkipPublished bool `json:"skip_published"` // 是否跳过已发布的文章（默认 false）
+
 	ctx *pluginEntity.Plugin
 }
 
@@ -67,6 +70,7 @@ func NewAISeoPlugin() *AISeoPlugin {
 		CronExp:           "@every 30m",
 		BatchSize:         10,
 		ForceRegenerate:   false,
+		SkipPublished:     false,
 	}
 }
 
@@ -112,7 +116,8 @@ func (p *AISeoPlugin) Run(ctx *pluginEntity.Plugin) error {
 	p.ctx.Log.Info("AISeoPlugin started",
 		zap.String("api_url", p.ApiURL),
 		zap.String("model", p.Model),
-		zap.Bool("force_regenerate", p.ForceRegenerate))
+		zap.Bool("force_regenerate", p.ForceRegenerate),
+		zap.Bool("skip_published", p.SkipPublished))
 
 	// 获取未生成的文章
 	articles, err := p.getUngeneratedArticles(p.BatchSize)
@@ -204,6 +209,14 @@ func (p *AISeoPlugin) getUngeneratedArticles(limit int) ([]*entity.Article, erro
 			p.ctx.Log.Warn("Failed to get article detail",
 				zap.Int("article_id", base.ID),
 				zap.Error(err))
+			continue
+		}
+
+		// 如果启用了跳过已发布文章，则跳过已发布的文章
+		if p.SkipPublished && article.Status {
+			p.ctx.Log.Debug("Skipping published article",
+				zap.Int("article_id", article.ID),
+				zap.String("title", article.Title))
 			continue
 		}
 
