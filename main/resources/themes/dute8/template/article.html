@@ -2,6 +2,47 @@
 {{import "./component/article_list.html"}}
 {{import "./component/breadcrumb.html" }}
 
+{{block head()}}
+<!-- Article Open Graph -->
+<meta property="og:type" content="article" />
+<meta property="article:published_time" content="{{ Data.CreateTimeFormat "2006-01-02T15:04:05+08:00" }}" />
+{{ if Data.Thumbnail != "" }}
+<meta property="og:image" content="{{ Data.Thumbnail }}" />
+{{ end }}
+
+<!-- Twitter Card -->
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="{{ Data.Title }}" />
+{{ if Data.Description != "" }}
+<meta name="twitter:description" content="{{ Data.Description }}" />
+{{ end }}
+{{ if Data.Thumbnail != "" }}
+<meta name="twitter:image" content="{{ Data.Thumbnail }}" />
+{{ end }}
+
+<!-- Article Structured Data -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Article",
+  "headline": "{{ Data.Title }}",
+  "datePublished": "{{ Data.CreateTimeFormat "2006-01-02T15:04:05+08:00" }}",
+  "dateModified": "{{ Data.CreateTimeFormat "2006-01-02T15:04:05+08:00" }}",
+  "author": {
+    "@type": "Organization",
+    "name": "{{ Config.Site.Name }}"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "{{ Config.Site.Name }}",
+    "url": "{{ Config.Site.URL }}"
+  }{{ if Data.Description != "" }},
+  "description": "{{ Data.Description }}"{{ end }}{{ if Data.Thumbnail != "" }},
+  "image": "{{ Data.Thumbnail }}"{{ end }}
+}
+</script>
+{{end}}
+
 {{block main()}}
 
     {{ tags := Tag().Limit(10).ListByArticleID(Data.ID) }}

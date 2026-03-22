@@ -16,6 +16,26 @@
     {{ if Page.Title !="" }}
     <title>{{ Page.Title }}</title>
     {{ end }}
+    <!-- Canonical URL -->
+    <link rel="canonical" href="{{ Config.Site.URL }}{{ Page.Path }}" />
+    <!-- Open Graph -->
+    <meta property="og:site_name" content="{{ Config.Site.Name }}" />
+    <meta property="og:type" content="{{ if Page.Name == `article` }}article{{ else }}website{{ end }}" />
+    <meta property="og:title" content="{{ Page.Title }}" />
+    {{ if Page.Description !="" }}
+    <meta property="og:description" content="{{ Page.Description }}" />
+    {{ end }}
+    <meta property="og:url" content="{{ Config.Site.URL }}{{ Page.Path }}" />
+    <meta property="og:locale" content="zh_CN" />
+    <!-- JSON-LD Structured Data -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebSite",
+      "name": "{{ Config.Site.Name }}",
+      "url": "{{ Config.Site.URL }}"
+    }
+    </script>
     <link href="/style.css" rel="stylesheet" type="text/css" />
     {{ Config.Template.Head |raw }}
   </head>

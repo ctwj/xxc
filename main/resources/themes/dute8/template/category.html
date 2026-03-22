@@ -3,7 +3,14 @@
 {{import "./component/pagination.html" }}
 {{import "./component/breadcrumb.html" }}
 
-
+{{block head()}}
+<!-- Category Canonical URL with pagination -->
+{{ if Page.PageNumber > 1 }}
+<link rel="canonical" href="{{ Data.URL() }}?page={{ Page.PageNumber }}" />
+{{ else }}
+<link rel="canonical" href="{{ Data.URL() }}" />
+{{ end }}
+{{end}}
 
 {{block main()}}
 

@@ -2206,3 +2206,24 @@
 .drawer .nav-item .nav-sub ul li a {
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
+
+/* Carousel navigation buttons */
+.dute-carousel-wrap .swiper-button-next:after,
+.dute-carousel-wrap .swiper-button-prev:after {
+  font-size: 30px !important;
+}
+
+.dute-carousel-wrap .swiper-button-prev,
+.dute-carousel-wrap .swiper-button-next {
+  color: white;
+  background: rgba(0, 0, 0, 0.6);
+  border-radius: 6px;
+}
+
+.dute-carousel-wrap .swiper-button-prev {
+  left: 5px;
+}
+
+.dute-carousel-wrap .swiper-button-next {
+  right: 5px;
+}
