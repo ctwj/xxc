@@ -47,20 +47,15 @@ type downloadResult struct {
 	FileSize   int64         // 文件大小
 }
 
-// DirectLinkSavedItem 保存的直链记录
+// DirectLinkSavedItem 保存的直链记录（只保存 type 和上传后的新 url）
 type DirectLinkSavedItem struct {
-	Type      string `json:"type"`       // "直链"
-	URL       string `json:"url"`        // 原始直链
-	Status    string `json:"status"`     // success/failed
-	SavedURL  string `json:"saved_url"`  // 上传后的新链接
-	FileName  string `json:"file_name"`  // 文件名
-	FileSize  int64  `json:"file_size"`  // 文件大小
-	Timestamp int64  `json:"timestamp"`  // 处理时间
-	Error     string `json:"error"`      // 错误信息
+	Type string `json:"type"` // "直链"
+	URL  string `json:"url"`  // 上传后的新链接
 }
 
 type DirectLinkDownload struct {
 	// 基础配置
+	ArticleID         int    `json:"article_id"`          // 指定文章ID，为0时处理所有文章
 	AllowedExtensions string `json:"allowed_extensions"` // 逗号分隔，如 ".zip,.rar,.7z"
 	MaxFileSizeMB     int    `json:"max_file_size_mb"`
 	AllowedDomains    string `json:"allowed_domains"` // 逗号分隔
@@ -161,7 +156,53 @@ func (p *DirectLinkDownload) Run(ctx *pluginEntity.Plugin) error {
 		p.ctx = ctx
 	}
 
-	ctx.Log.Info("开始批量处理支链下载...")
+	// 统计信息
+	processedCount := 0
+	skippedCount := 0
+	updatedCount := 0
+	errorCount := 0
+
+	// 如果指定了文章ID，只处理该文章
+	if p.ArticleID > 0 {
+		ctx.Log.Info("处理指定文章", zap.Int("article_id", p.ArticleID))
+
+		article, err := repository.Article.Get(p.ArticleID)
+		if err != nil {
+			ctx.Log.Error("获取文章失败", zap.Int("id", p.ArticleID), zap.Error(err))
+			return err
+		}
+
+		// 检查文章是否需要处理直链
+		if !p.checkNeedsProcess(article) {
+			ctx.Log.Info("文章无需处理直链", zap.Int("id", article.ID))
+			return nil
+		}
+
+		// 处理文章直链
+		if err := p.Save(article); err != nil {
+			ctx.Log.Error("处理文章直链失败",
+				zap.Int("id", article.ID),
+				zap.String("title", article.Title),
+				zap.Error(err),
+			)
+			return err
+		}
+
+		// 更新文章到数据库
+		if err := repository.Article.Update(article); err != nil {
+			ctx.Log.Error("更新文章失败",
+				zap.Int("id", article.ID),
+				zap.Error(err),
+			)
+			return err
+		}
+
+		ctx.Log.Info("文章直链处理成功", zap.Int("id", article.ID), zap.String("title", article.Title))
+		return nil
+	}
+
+	// 未指定文章ID，批量处理所有文章
+	ctx.Log.Info("开始批量处理直链下载...")
 
 	// 查询最新的 10000 篇文章
 	queryCtx := &repoContext{
@@ -176,12 +217,6 @@ func (p *DirectLinkDownload) Run(ctx *pluginEntity.Plugin) error {
 	}
 
 	ctx.Log.Info("共查询到文章数量", zap.Int("count", len(articles)))
-
-	// 统计信息
-	processedCount := 0
-	skippedCount := 0
-	updatedCount := 0
-	errorCount := 0
 
 	// 遍历每篇文章
 	for i, articleBase := range articles {
@@ -305,18 +340,11 @@ func (p *DirectLinkDownload) Save(article *entity.Article) error {
 				zap.String("url", link.URL),
 				zap.Error(err),
 			)
-			// 添加失败记录
-			savedItem = &DirectLinkSavedItem{
-				Type:      "直链",
-				URL:       link.URL,
-				Status:    "failed",
-				Timestamp: time.Now().Unix(),
-				Error:     err.Error(),
-			}
+			continue
 		}
 
 		// 更新保存记录
-		p.updateSavedLinks(saved, savedItem)
+		saved = p.updateSavedLinks(saved, savedItem)
 	}
 
 	// 更新 article.Res
@@ -365,14 +393,8 @@ func (p *DirectLinkDownload) parseSavedLinks(res vo.Extends) []DirectLinkSavedIt
 						savedType, _ := savedMap["type"].(string)
 						if savedType == "直链" {
 							savedItem := DirectLinkSavedItem{
-								Type:      savedType,
-								URL:       toString(savedMap["url"]),
-								Status:    toString(savedMap["status"]),
-								SavedURL:  toString(savedMap["saved_url"]),
-								FileName:  toString(savedMap["file_name"]),
-								FileSize:  toInt64(savedMap["file_size"]),
-								Timestamp: toInt64(savedMap["timestamp"]),
-								Error:     toString(savedMap["error"]),
+								Type: savedType,
+								URL:  toString(savedMap["url"]),
 							}
 							saved = append(saved, savedItem)
 						}
@@ -385,46 +407,37 @@ func (p *DirectLinkDownload) parseSavedLinks(res vo.Extends) []DirectLinkSavedIt
 	return saved
 }
 
-// isProcessed 检查直链是否已处理
+// isProcessed 检查直链是否已处理（saved 中存在 type="直链" 的记录即表示已处理成功）
 func (p *DirectLinkDownload) isProcessed(url string, saved []DirectLinkSavedItem) bool {
 	for _, item := range saved {
-		if item.Type == "直链" && item.URL == url && item.Status == "success" {
+		if item.Type == "直链" {
 			return true
 		}
 	}
 	return false
 }
 
-// updateSavedLinks 更新保存记录
-func (p *DirectLinkDownload) updateSavedLinks(saved []DirectLinkSavedItem, newItem *DirectLinkSavedItem) {
-	found := false
+// updateSavedLinks 更新保存记录（添加或更新），返回更新后的切片
+func (p *DirectLinkDownload) updateSavedLinks(saved []DirectLinkSavedItem, newItem *DirectLinkSavedItem) []DirectLinkSavedItem {
+	// 查找是否已存在 type="直链" 的记录
 	for i, item := range saved {
-		if item.Type == "直链" && item.URL == newItem.URL {
+		if item.Type == "直链" {
 			saved[i] = *newItem
-			found = true
-			break
+			return saved
 		}
 	}
-
-	if !found {
-		saved = append(saved, *newItem)
-	}
+	// 不存在则添加
+	return append(saved, *newItem)
 }
 
 // updateArticleRes 更新 article.Res
 func (p *DirectLinkDownload) updateArticleRes(article *entity.Article, saved []DirectLinkSavedItem) {
-	// 转换为 []any 格式
+	// 转换为 []any 格式（只保存 type 和 url）
 	var savedAny []any
 	for _, item := range saved {
 		savedAny = append(savedAny, map[string]any{
-			"type":       item.Type,
-			"url":        item.URL,
-			"status":     item.Status,
-			"saved_url":  item.SavedURL,
-			"file_name":  item.FileName,
-			"file_size":  item.FileSize,
-			"timestamp":  item.Timestamp,
-			"error":      item.Error,
+			"type": item.Type,
+			"url":  item.URL,
 		})
 	}
 
@@ -447,11 +460,20 @@ func (p *DirectLinkDownload) updateArticleRes(article *entity.Article, saved []D
 }
 
 // validateFile 验证文件是否允许下载
-func (p *DirectLinkDownload) validateFile(url string, size int64) error {
+func (p *DirectLinkDownload) validateFile(urlStr string, size int64) error {
+	// 从 URL 中提取文件名
+	parsedURL, err := url.Parse(urlStr)
+	if err != nil {
+		return fmt.Errorf("invalid url: %w", err)
+	}
+	filename := parsedURL.Path
+	if idx := strings.LastIndex(filename, "/"); idx != -1 {
+		filename = filename[idx+1:]
+	}
+
 	// 检查文件后缀
 	allowedExtensions := utils.ParseFileExtensions(p.AllowedExtensions)
 	if len(allowedExtensions) > 0 {
-		filename := utils.GetFileNameWithoutExt(url)
 		if !utils.IsAllowedExtension(filename, allowedExtensions) {
 			return fmt.Errorf("file extension not allowed: %s", filename)
 		}
@@ -465,8 +487,8 @@ func (p *DirectLinkDownload) validateFile(url string, size int64) error {
 	// 检查域名
 	allowedDomains := utils.ParseAllowedDomains(p.AllowedDomains)
 	if len(allowedDomains) > 0 {
-		if !utils.IsAllowedDomain(url, allowedDomains) {
-			return fmt.Errorf("domain not allowed: %s", url)
+		if !utils.IsAllowedDomain(urlStr, allowedDomains) {
+			return fmt.Errorf("domain not allowed: %s", urlStr)
 		}
 	}
 
@@ -507,13 +529,7 @@ func (p *DirectLinkDownload) processDirectLink(link DirectLinkSavedItem) (*Direc
 		p.ctx.Log.Warn("文件验证失败",
 			zap.String("url", link.URL),
 			zap.Error(err))
-		return &DirectLinkSavedItem{
-			Type:      "直链",
-			URL:       link.URL,
-			Status:    "failed",
-			Timestamp: time.Now().Unix(),
-			Error:     err.Error(),
-		}, nil
+		return nil, err
 	}
 
 	// 3. 下载文件
@@ -522,20 +538,24 @@ func (p *DirectLinkDownload) processDirectLink(link DirectLinkSavedItem) (*Direc
 		p.ctx.Log.Error("下载文件失败",
 			zap.String("url", link.URL),
 			zap.Error(err))
-		return &DirectLinkSavedItem{
-			Type:      "直链",
-			URL:       link.URL,
-			Status:    "failed",
-			Timestamp: time.Now().Unix(),
-			Error:     err.Error(),
-		}, nil
+		return nil, err
 	}
 
 	// 更新实际文件大小
 	fileSize = int64(len(data))
 
-	// 4. 提取文件名
-	filename := utils.GetFileNameWithoutExt(link.URL)
+	// 4. 从 URL 中提取文件名
+	parsedURL, err := url.Parse(link.URL)
+	if err != nil {
+		p.ctx.Log.Error("解析URL失败", zap.String("url", link.URL), zap.Error(err))
+		return nil, err
+	}
+	urlFilename := parsedURL.Path
+	if idx := strings.LastIndex(urlFilename, "/"); idx != -1 {
+		urlFilename = urlFilename[idx+1:]
+	}
+
+	filename := utils.GetFileNameWithoutExt(urlFilename)
 	if filename == "" {
 		filename = fmt.Sprintf("file_%d", time.Now().Unix())
 	}
@@ -547,7 +567,7 @@ func (p *DirectLinkDownload) processDirectLink(link DirectLinkSavedItem) (*Direc
 	}
 
 	filename = utils.SanitizeFileName(filename)
-	ext := utils.GetFileExtension(link.URL)
+	ext := utils.GetFileExtension(urlFilename)
 	fullName := filename + ext
 
 	// 5. 压缩包处理
@@ -582,13 +602,7 @@ func (p *DirectLinkDownload) processDirectLink(link DirectLinkSavedItem) (*Direc
 		p.ctx.Log.Error("上传文件失败",
 			zap.String("filename", fullName),
 			zap.Error(err))
-		return &DirectLinkSavedItem{
-			Type:      "直链",
-			URL:       link.URL,
-			Status:    "failed",
-			Timestamp: time.Now().Unix(),
-			Error:     err.Error(),
-		}, nil
+		return nil, err
 	}
 
 	p.ctx.Log.Info("直链处理成功",
@@ -599,13 +613,8 @@ func (p *DirectLinkDownload) processDirectLink(link DirectLinkSavedItem) (*Direc
 	)
 
 	return &DirectLinkSavedItem{
-		Type:      "直链",
-		URL:       link.URL,
-		Status:    "success",
-		SavedURL:  savedURL,
-		FileName:  fullName,
-		FileSize:  fileSize,
-		Timestamp: time.Now().Unix(),
+		Type: "直链",
+		URL:  savedURL, // 保存上传后的新链接
 	}, nil
 }
 
@@ -744,27 +753,6 @@ func toString(v interface{}) string {
 		return strconv.Itoa(val)
 	default:
 		return fmt.Sprint(val)
-	}
-}
-
-func toInt64(v interface{}) int64 {
-	if v == nil {
-		return 0
-	}
-	switch val := v.(type) {
-	case int64:
-		return val
-	case int:
-		return int64(val)
-	case float64:
-		return int64(val)
-	case string:
-		if i, err := strconv.ParseInt(val, 10, 64); err == nil {
-			return i
-		}
-		return 0
-	default:
-		return 0
 	}
 }
 

@@ -7,6 +7,10 @@
 
   <a-tabs type="rounded">
     <a-tab-pane key="base" title="基础">
+      <a-form-item label="指定文章ID" help="填写后只处理该文章，留空则批量处理所有文章">
+        <a-input-number v-model="data.article_id" class="numberInput" :min="0" placeholder="留空处理全部" />
+      </a-form-item>
+
       <a-form-item label="允许的文件后缀" help="逗号分隔，如：.zip,.rar,.7z">
         <a-input v-model="data.allowed_extensions" class="w-full" placeholder=".zip,.rar,.7z" />
       </a-form-item>
@@ -35,6 +39,12 @@
 
       <a-form-item label="下载 Referer" help="留空则自动从下载 URL 中提取">
         <a-textarea v-model="data.down_referer" :auto-size="{minRows:3,maxRows:5}" placeholder="https://example.com" />
+      </a-form-item>
+
+      <a-divider />
+
+      <a-form-item label="文件名替换规则" help="每行一个，格式：old=new。用于处理下载文件名，如去除品牌名">
+        <a-textarea v-model="data.file_name_replace" :auto-size="{minRows:5,maxRows:8}" placeholder="旧品牌=新品牌&#10;[广告]=&#10;\\s+=_" />
       </a-form-item>
     </a-tab-pane>
 
@@ -103,10 +113,6 @@
 
         <a-form-item label="要添加的文件" help="逗号分隔，本地文件路径，如：/path/to/readme.txt">
           <a-input v-model="data.add_files" class="w-full" placeholder="/path/to/readme.txt,/path/to/license.txt" />
-        </a-form-item>
-
-        <a-form-item label="文件名替换规则" help="每行一个，格式：old=new 或 old:new">
-          <a-textarea v-model="data.file_name_replace" :auto-size="{minRows:5,maxRows:8}" placeholder="[广告]=&#10;\s+=_" />
         </a-form-item>
       </template>
     </a-tab-pane>

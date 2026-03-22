@@ -92,9 +92,11 @@ func (a *ArticleSanitizer) sanitize(item *entity.Article, action string) error {
 
 	item.Content = a.injectP(item.Content)
 
-	// 文本替换
+	// 文本替换（对内容、描述、关键字都生效）
 	if a.EnableTextReplace && len(a.TextReplacements) > 0 {
 		item.Content = a.replaceText(item.Content)
+		item.Description = a.replaceText(item.Description)
+		item.Keywords = a.replaceText(item.Keywords)
 		a.ctx.Log.Debug("应用文本替换规则",
 			zap.Int("rules", len(a.TextReplacements)),
 			zap.String("action", action))
