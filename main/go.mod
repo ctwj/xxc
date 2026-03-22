@@ -1,6 +1,6 @@
 module moss
 
-go 1.24.0
+go 1.25.0
 
 require (
 	github.com/CloudyKit/jet/v6 v6.2.0
@@ -41,10 +41,12 @@ require (
 	github.com/tencentyun/cos-go-sdk-v5 v0.7.59
 	github.com/valyala/bytebufferpool v1.0.0
 	github.com/xuri/excelize/v2 v2.10.1
+	github.com/yeka/zip v0.0.0-20231116150916-03d6312748a9
 	github.com/yitter/idgenerator-go v1.3.3
 	go.uber.org/zap v1.27.0
 	golang.org/x/crypto v0.48.0
 	golang.org/x/image v0.25.0
+	golang.org/x/text v0.35.0
 	golang.org/x/time v0.8.0
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 	gorm.io/driver/mysql v1.5.7
@@ -128,9 +130,8 @@ require (
 	golang.org/x/arch v0.12.0 // indirect
 	golang.org/x/exp v0.0.0-20241210194714-1829a127f884 // indirect
 	golang.org/x/net v0.50.0 // indirect
-	golang.org/x/sync v0.19.0 // indirect
+	golang.org/x/sync v0.20.0 // indirect
 	golang.org/x/sys v0.41.0 // indirect
-	golang.org/x/text v0.34.0 // indirect
 	google.golang.org/protobuf v1.35.2 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect

@@ -64,6 +64,12 @@ type DirectLinkDownload struct {
 	DownRetry   int    `json:"down_retry"`
 	DownProxy   string `json:"down_proxy"`
 	DownTimeout int    `json:"down_timeout"`
+	DownReferer string `json:"down_referer"` // 下载时使用的 referer 映射，每行 domain=referer，支持子域名匹配
+
+	// 运行时字段（不持久化）
+	ctx         *pluginEntity.Plugin
+	rateLimiter *rate.Limiter
+	refererMap  map[string]string // 解析后的域名-referer 映射
 
 	// API 上传配置
 	APIUploadURL        string `json:"api_upload_url"`       // 图床API地址
@@ -80,15 +86,14 @@ type DirectLinkDownload struct {
 	APIQueueTimeout     int    `json:"api_queue_timeout"`    // 队列任务超时时间(秒)
 
 	// 压缩包处理
-	RePackage      bool   `json:"re_package"`
-	DeleteFiles    string `json:"delete_files"`    // 逗号分隔
-	AddFiles       string `json:"add_files"`       // 逗号分隔（本地路径）
+	RePackage       bool   `json:"re_package"`
+	DeleteFiles     string `json:"delete_files"`      // 逗号分隔，支持模糊匹配
+	AddFiles        string `json:"add_files"`         // 逗号分隔（本地路径）
 	FileNameReplace string `json:"file_name_replace"` // 每行 old=new
+	ZipPassword     string `json:"zip_password"`      // 压缩包密码，为空则不加密
 
 	// 运行时字段（不持久化）
-	ctx          *pluginEntity.Plugin
-	rateLimiter  *rate.Limiter
-	uploadQueue   chan *downloadTask
+	uploadQueue chan *downloadTask
 	workerPool    *ants.PoolWithFunc
 	queueCtx      context.Context
 	queueCancel   context.CancelFunc
@@ -133,6 +138,14 @@ func (p *DirectLinkDownload) Load(ctx *pluginEntity.Plugin) error {
 		ctx.Info.CronExp = "@every 24h"
 	}
 
+	// 调试：打印原始配置
+	ctx.Log.Debug("加载插件配置",
+		zap.String("down_referer", p.DownReferer),
+	)
+
+	// 解析 referer 映射
+	p.parseRefererMap()
+
 	// 初始化频率限制和队列系统
 	if err := p.initRateLimiter(); err != nil {
 		return fmt.Errorf("init rate limiter failed: %w", err)
@@ -146,6 +159,8 @@ func (p *DirectLinkDownload) Load(ctx *pluginEntity.Plugin) error {
 		zap.String("allowed_extensions", p.AllowedExtensions),
 		zap.Int("max_file_size_mb", p.MaxFileSizeMB),
 		zap.Bool("re_package", p.RePackage),
+		zap.String("down_referer", p.DownReferer),
+		zap.Int("referer_map_count", len(p.refererMap)),
 	)
 
 	return nil
@@ -495,6 +510,80 @@ func (p *DirectLinkDownload) validateFile(urlStr string, size int64) error {
 	return nil
 }
 
+// parseRefererMap 解析 referer 映射配置
+// 配置格式：每行 domain=referer，支持子域名匹配
+// 例如：itmopcdn.com=https://www.itmop.com
+func (p *DirectLinkDownload) parseRefererMap() {
+	p.refererMap = make(map[string]string)
+	if p.DownReferer == "" {
+		return
+	}
+
+	for _, line := range strings.Split(p.DownReferer, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) == 2 {
+			domain := strings.TrimSpace(parts[0])
+			referer := strings.TrimSpace(parts[1])
+			if domain != "" && referer != "" {
+				p.refererMap[domain] = referer
+			}
+		}
+	}
+}
+
+// getRefererForURL 根据 URL 域名获取对应的 referer
+// 匹配规则：支持子域名匹配，如配置 itmopcdn.com 可匹配 down3.itmopcdn.com
+func (p *DirectLinkDownload) getRefererForURL(rawURL string) string {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		p.ctx.Log.Warn("解析URL失败", zap.String("url", rawURL), zap.Error(err))
+		return ""
+	}
+
+	host := parsed.Host
+	// 移除端口号
+	if idx := strings.Index(host, ":"); idx != -1 {
+		host = host[:idx]
+	}
+
+	p.ctx.Log.Debug("获取referer",
+		zap.String("url", rawURL),
+		zap.String("host", host),
+		zap.Any("referer_map", p.refererMap),
+	)
+
+	// 完全匹配
+	if referer, ok := p.refererMap[host]; ok {
+		p.ctx.Log.Info("referer完全匹配", zap.String("host", host), zap.String("referer", referer))
+		return referer
+	}
+
+	// 子域名匹配：从后往前匹配域名后缀
+	// 例如：down3.itmopcdn.com 匹配 itmopcdn.com
+	parts := strings.Split(host, ".")
+	for i := 1; i < len(parts); i++ {
+		domain := strings.Join(parts[i:], ".")
+		if referer, ok := p.refererMap[domain]; ok {
+			p.ctx.Log.Info("referer子域名匹配",
+				zap.String("host", host),
+				zap.String("matched_domain", domain),
+				zap.String("referer", referer))
+			return referer
+		}
+	}
+
+	// 未匹配到，从 URL 自动提取
+	referer := p.extractRefererFromURL(rawURL)
+	p.ctx.Log.Warn("referer未匹配到配置，使用URL自动提取",
+		zap.String("host", host),
+		zap.String("referer", referer))
+	return referer
+}
+
 // extractRefererFromURL 从 URL 中提取 referer
 func (p *DirectLinkDownload) extractRefererFromURL(rawURL string) string {
 	parsed, err := url.Parse(rawURL)
@@ -511,8 +600,8 @@ func (p *DirectLinkDownload) processDirectLink(link DirectLinkSavedItem) (*Direc
 		zap.String("url", link.URL),
 	)
 
-	// 从 URL 中提取 referer
-	referer := p.extractRefererFromURL(link.URL)
+	// 根据 URL 域名获取对应的 referer
+	referer := p.getRefererForURL(link.URL)
 
 	// 1. 获取文件大小
 	fileSize, err := p.getFileSize(link.URL, referer)
@@ -543,6 +632,22 @@ func (p *DirectLinkDownload) processDirectLink(link DirectLinkSavedItem) (*Direc
 
 	// 更新实际文件大小
 	fileSize = int64(len(data))
+
+	// 检查下载的内容是否是 HTML（可能是错误页面）
+	contentType := http.DetectContentType(data)
+	p.ctx.Log.Info("下载文件类型检测",
+		zap.String("url", link.URL),
+		zap.String("content_type", contentType),
+		zap.Int("size", len(data)))
+
+	if strings.HasPrefix(contentType, "text/html") {
+		// 如果返回的是 HTML，可能是防盗链错误页面
+		p.ctx.Log.Error("下载返回HTML页面，可能是防盗链或referer错误",
+			zap.String("url", link.URL),
+			zap.String("referer", referer),
+			zap.String("preview", string(data[:minInt(len(data), 500)])))
+		return nil, fmt.Errorf("download returned HTML page, possible referer error")
+	}
 
 	// 4. 从 URL 中提取文件名
 	parsedURL, err := url.Parse(link.URL)
@@ -580,19 +685,39 @@ func (p *DirectLinkDownload) processDirectLink(link DirectLinkSavedItem) (*Direc
 		addFiles := strings.Split(p.AddFiles, ",")
 		renameRules := strings.Split(p.FileNameReplace, "\n")
 
-		repackagedData, err := utils.RepackageZip(data, deleteFiles, addFiles, renameRules)
+		// 记录删除规则
+		p.ctx.Log.Debug("压缩包重新打包配置",
+			zap.Strings("delete_files", deleteFiles),
+			zap.Strings("add_files", addFiles),
+			zap.Bool("has_password", p.ZipPassword != ""),
+		)
+
+		result, err := utils.RepackageZip(data, deleteFiles, addFiles, renameRules, p.ZipPassword)
 		if err != nil {
 			p.ctx.Log.Warn("重新打包失败，使用原始文件",
 				zap.String("filename", fullName),
 				zap.Error(err))
 		} else {
-			data = repackagedData
+			originalSize := len(data)
+			data = result.Data
 			fileSize = int64(len(data))
-			p.ctx.Log.Info("压缩包重新打包成功",
+			
+			// 记录详细结果
+			logFields := []zap.Field{
 				zap.String("filename", fullName),
-				zap.Int("original_size", int(len(data))),
-				zap.Int("repackaged_size", len(repackagedData)),
-			)
+				zap.Int("original_size", originalSize),
+				zap.Int("repackaged_size", len(result.Data)),
+				zap.Int("deleted_count", result.DeletedCount),
+				zap.Int("kept_count", result.KeptCount),
+				zap.Int("added_count", result.AddedCount),
+				zap.Bool("encrypted", p.ZipPassword != ""),
+			}
+			
+			if len(result.AddErrors) > 0 {
+				logFields = append(logFields, zap.Strings("add_errors", result.AddErrors))
+			}
+			
+			p.ctx.Log.Info("压缩包重新打包成功", logFields...)
 		}
 	}
 
@@ -775,10 +900,10 @@ func (p *DirectLinkDownload) createHTTPClient(proxy string, timeout int) *http.C
 }
 
 // getFileSize 获取文件大小（通过 HEAD 请求）
-func (p *DirectLinkDownload) getFileSize(url string, referer string) (int64, error) {
+func (p *DirectLinkDownload) getFileSize(urlStr string, referer string) (int64, error) {
 	client := p.createHTTPClient(p.DownProxy, p.DownTimeout)
 
-	req, err := http.NewRequest("HEAD", url, nil)
+	req, err := http.NewRequest("HEAD", urlStr, nil)
 	if err != nil {
 		return 0, err
 	}
@@ -810,6 +935,10 @@ func (p *DirectLinkDownload) getFileSize(url string, referer string) (int64, err
 
 // down 下载文件
 func (p *DirectLinkDownload) down(url string, referer string) ([]byte, error) {
+	p.ctx.Log.Info("开始下载文件",
+		zap.String("url", url),
+		zap.String("referer", referer))
+
 	file, err := request.New().
 		SetRetry(p.DownRetry).
 		SetProxyURLStr(p.DownProxy).
@@ -819,8 +948,13 @@ func (p *DirectLinkDownload) down(url string, referer string) ([]byte, error) {
 		p.ctx.Log.Warn("down file error",
 			zap.String("url", url),
 			zap.Error(err))
+		return nil, err
 	}
-	return file, err
+
+	p.ctx.Log.Info("下载文件成功",
+		zap.String("url", url),
+		zap.Int("size", len(file)))
+	return file, nil
 }
 
 // uploadByAPI 通过 API 上传文件
@@ -879,10 +1013,23 @@ func (p *DirectLinkDownload) uploadByAPI(name, ext string, file []byte) (string,
 		}
 	}
 
+	// 记录请求详情
+	p.ctx.Log.Info("API上传请求详情",
+		zap.String("url", p.APIUploadURL),
+		zap.String("method", "POST"),
+		zap.String("content_type", writer.FormDataContentType()),
+		zap.Int("body_size", body.Len()),
+		zap.String("file_name", name),
+		zap.Int("file_size", len(file)),
+		zap.String("file_field", p.APIFileField),
+		zap.Any("headers", req.Header),
+	)
+
 	// 发送请求
 	client := p.createHTTPClient(p.APIProxy, p.APITimeout)
 	resp, err := client.Do(req)
 	if err != nil {
+		p.ctx.Log.Error("API上传请求失败", zap.Error(err))
 		return "", err
 	}
 	defer resp.Body.Close()
@@ -891,6 +1038,13 @@ func (p *DirectLinkDownload) uploadByAPI(name, ext string, file []byte) (string,
 	if err != nil {
 		return "", err
 	}
+
+	// 记录响应详情
+	p.ctx.Log.Info("API上传响应详情",
+		zap.Int("status_code", resp.StatusCode),
+		zap.Any("response_headers", resp.Header),
+		zap.String("response_body", string(respBody[:minInt(len(respBody), 500)])),
+	)
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return "", fmt.Errorf("api upload status %d: %s", resp.StatusCode, string(respBody[:minInt(len(respBody), 180)]))

@@ -37,8 +37,8 @@
         <a-input v-model="data.down_proxy" class="w-full" placeholder="http://proxy.example.com:8080" />
       </a-form-item>
 
-      <a-form-item label="下载 Referer" help="留空则自动从下载 URL 中提取">
-        <a-textarea v-model="data.down_referer" :auto-size="{minRows:3,maxRows:5}" placeholder="https://example.com" />
+      <a-form-item label="下载 Referer 映射" help="每行一个，格式：domain=referer。支持子域名匹配，如 itmopcdn.com=https://www.itmop.com">
+        <a-textarea v-model="data.down_referer" :auto-size="{minRows:3,maxRows:5}" placeholder="itmopcdn.com=https://www.itmop.com&#10;example.com=https://example.com" />
       </a-form-item>
 
       <a-divider />
@@ -107,12 +107,16 @@
       </a-form-item>
 
       <template v-if="data.re_package">
-        <a-form-item label="要删除的文件" help="逗号分隔，如：广告.txt,推广.html">
-          <a-input v-model="data.delete_files" class="w-full" placeholder="广告.txt,推广.html" />
+        <a-form-item label="要删除的文件" help="逗号分隔，支持模糊匹配。如：广告（删除所有包含'广告'的文件）、*.txt（删除所有txt文件）、广告.txt（精确匹配）">
+          <a-input v-model="data.delete_files" class="w-full" placeholder="广告,推广,readme.txt" />
         </a-form-item>
 
-        <a-form-item label="要添加的文件" help="逗号分隔，本地文件路径，如：/path/to/readme.txt">
+        <a-form-item label="要添加的文件" help="逗号分隔，需使用绝对路径。如：/path/to/readme.txt">
           <a-input v-model="data.add_files" class="w-full" placeholder="/path/to/readme.txt,/path/to/license.txt" />
+        </a-form-item>
+
+        <a-form-item label="压缩包密码" help="留空则不加密，设置后将使用 AES-256 加密">
+          <a-input v-model="data.zip_password" class="w-full" placeholder="留空不加密" />
         </a-form-item>
       </template>
     </a-tab-pane>
