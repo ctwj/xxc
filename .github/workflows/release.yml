@@ -39,13 +39,33 @@ jobs:
         with:
           node-version: '20'
 
+      - name: Install pnpm
+        run: npm install -g pnpm
+
       - name: Install frontend dependencies
         working-directory: admin
-        run: npm install
+        run: pnpm install --frozen-lockfile
 
       - name: Build frontend
         working-directory: admin
-        run: npm run build
+        run: pnpm run build
+        env:
+          NODE_ENV: production
+
+      - name: Verify frontend build
+        run: |
+          echo "=== Checking build output ==="
+          ls -la main/resources/admin/
+          if [ ! -f "main/resources/admin/index.html" ]; then
+            echo "Error: index.html not found"
+            exit 1
+          fi
+          if ! grep -q "assets/index" main/resources/admin/index.html; then
+            echo "Error: index.html missing JS references"
+            cat main/resources/admin/index.html
+            exit 1
+          fi
+          echo "Frontend build verified successfully"
 
       - name: Build backend
         env:
