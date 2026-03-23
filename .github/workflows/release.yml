@@ -37,7 +37,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
 
       - name: Install pnpm
         run: npm install -g pnpm
@@ -56,14 +56,30 @@ jobs:
         run: |
           echo "=== Checking build output ==="
           ls -la main/resources/admin/
+          echo ""
+          echo "=== Assets directory ==="
+          ls -la main/resources/admin/assets/ || echo "No assets directory!"
+          echo ""
+          echo "=== index.html content ==="
+          cat main/resources/admin/index.html
+          echo ""
           if [ ! -f "main/resources/admin/index.html" ]; then
             echo "Error: index.html not found"
             exit 1
           fi
+          if [ ! -d "main/resources/admin/assets" ]; then
+            echo "Error: assets directory not found"
+            exit 1
+          fi
           if ! grep -q "assets/index" main/resources/admin/index.html; then
             echo "Error: index.html missing JS references"
-            cat main/resources/admin/index.html
             exit 1
+          fi
+          # 统计 assets 文件数量
+          ASSET_COUNT=$(ls main/resources/admin/assets/ | wc -l)
+          echo "Assets count: $ASSET_COUNT"
+          if [ "$ASSET_COUNT" -lt 10 ]; then
+            echo "Warning: Too few assets files, build may be incomplete"
           fi
           echo "Frontend build verified successfully"
 
@@ -75,6 +91,19 @@ jobs:
         working-directory: main
         run: |
           go build -ldflags="-s -w" -trimpath -o ../moss_linux_amd64 ./cmd/web/main.go
+
+      - name: Install UPX
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y upx-ucl
+
+      - name: Compress binary with UPX
+        run: |
+          echo "=== Before UPX compression ==="
+          ls -lh moss_linux_amd64
+          upx --best --lzma moss_linux_amd64
+          echo "=== After UPX compression ==="
+          ls -lh moss_linux_amd64
 
       - name: Get version
         id: get_version
