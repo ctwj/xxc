@@ -1,6 +1,6 @@
 module moss
 
-go 1.23
+go 1.25.0
 
 require (
 	github.com/CloudyKit/jet/v6 v6.2.0

@@ -115,8 +115,12 @@
           <a-input v-model="data.add_files" class="w-full" placeholder="/path/to/readme.txt,/path/to/license.txt" />
         </a-form-item>
 
-        <a-form-item label="压缩包密码" help="留空则不加密，设置后将使用 AES-256 加密">
+        <a-form-item label="压缩包密码" help="留空则不加密，设置后使用 ZipCrypto 加密（兼容性好）">
           <a-input v-model="data.zip_password" class="w-full" placeholder="留空不加密" />
+        </a-form-item>
+
+        <a-form-item label="不加密的文件" help="逗号分隔，支持模糊匹配。如：README.txt（精确匹配）、说明（模糊匹配）、*.nfo（通配符）">
+          <a-input v-model="data.no_encrypt_files" class="w-full" placeholder="README.txt,说明.txt,*.nfo" />
         </a-form-item>
       </template>
     </a-tab-pane>

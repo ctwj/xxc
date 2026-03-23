@@ -28,7 +28,8 @@ type RepackageResult struct {
 // addFiles: 要添加的本地文件列表（需要绝对路径）
 // renameRules: 文件名重命名规则（旧名: 新名）
 // password: 压缩包密码，为空则不加密
-func RepackageZip(originalData []byte, deleteFiles, addFiles, renameRules []string, password string) (*RepackageResult, error) {
+// noEncryptFiles: 不需要加密的文件列表（支持模糊匹配），为空则全部加密
+func RepackageZip(originalData []byte, deleteFiles, addFiles, renameRules []string, password string, noEncryptFiles []string) (*RepackageResult, error) {
 	// 读取原始 ZIP
 	reader, err := zip.NewReader(bytes.NewReader(originalData), int64(len(originalData)))
 	if err != nil {
@@ -65,14 +66,23 @@ func RepackageZip(originalData []byte, deleteFiles, addFiles, renameRules []stri
 
 		// 创建新文件
 		var dst io.Writer
-		if password != "" {
-			dst, err = writer.Encrypt(newName, password, zip.AES256Encryption)
+		// 判断是否需要加密：有密码且不在不加密列表中
+		shouldEncrypt := password != "" && !shouldNotEncrypt(newName, noEncryptFiles)
+		if shouldEncrypt {
+			// 使用 StandardEncryption (ZipCrypto)，兼容性更好
+			dst, err = writer.Encrypt(newName, password, zip.StandardEncryption)
 			if err != nil {
 				src.Close()
 				return nil, err
 			}
 		} else {
-			dst, err = writer.Create(newName)
+			// 使用 FileHeader 创建文件，设置 UTF-8 标志解决中文乱码
+			header := &zip.FileHeader{
+				Name:   newName,
+				Flags:  0x800, // UTF-8 标志位
+				Method: zip.Deflate,
+			}
+			dst, err = writer.CreateHeader(header)
 			if err != nil {
 				src.Close()
 				return nil, err
@@ -104,15 +114,24 @@ func RepackageZip(originalData []byte, deleteFiles, addFiles, renameRules []stri
 
 		// 添加到 ZIP
 		var dst io.Writer
-		if password != "" {
-			dst, err = writer.Encrypt(filepath.Base(filePath), password, zip.AES256Encryption)
+		// 判断是否需要加密：有密码且不在不加密列表中
+		shouldEncrypt := password != "" && !shouldNotEncrypt(filepath.Base(filePath), noEncryptFiles)
+		if shouldEncrypt {
+			// 使用 StandardEncryption (ZipCrypto)，兼容性更好
+			dst, err = writer.Encrypt(filepath.Base(filePath), password, zip.StandardEncryption)
 			if err != nil {
 				result.AddErrors = append(result.AddErrors, "加密失败: "+filePath)
 				zap.S().Warnf("加密添加的文件失败: %s, 错误: %v", filePath, err)
 				continue
 			}
 		} else {
-			dst, err = writer.Create(filepath.Base(filePath))
+			// 使用 FileHeader 创建文件，设置 UTF-8 标志解决中文乱码
+			header := &zip.FileHeader{
+				Name:   filepath.Base(filePath),
+				Flags:  0x800, // UTF-8 标志位
+				Method: zip.Deflate,
+			}
+			dst, err = writer.CreateHeader(header)
 			if err != nil {
 				result.AddErrors = append(result.AddErrors, "创建文件头失败: "+filePath)
 				zap.S().Warnf("创建 ZIP 文件头失败: %s, 错误: %v", filePath, err)
@@ -185,6 +204,48 @@ func shouldDeleteFile(filename string, deleteFiles []string) bool {
 			matched, err = filepath.Match(pattern, decodedFilename)
 			if err == nil && matched {
 				zap.S().Infof("文件通配符匹配删除(decoded): %s (pattern=%s)", decodedFilename, pattern)
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// shouldNotEncrypt 检查文件是否不需要加密（支持模糊匹配）
+func shouldNotEncrypt(filename string, noEncryptFiles []string) bool {
+	// 如果没有指定不加密列表，所有文件都需要加密
+	if len(noEncryptFiles) == 0 {
+		return false
+	}
+	
+	// 获取 UTF-8 解码后的文件名（可能是 GBK 编码）
+	decodedFilename := decodeGBKFilename(filename)
+	
+	for _, pattern := range noEncryptFiles {
+		pattern = strings.TrimSpace(pattern)
+		if pattern == "" {
+			continue
+		}
+		// 完全匹配
+		if filename == pattern || decodedFilename == pattern {
+			zap.S().Debugf("文件不需要加密(完全匹配): %s", filename)
+			return true
+		}
+		// 模糊匹配
+		if strings.Contains(filename, pattern) || strings.Contains(decodedFilename, pattern) {
+			zap.S().Debugf("文件不需要加密(模糊匹配): %s (pattern=%s)", filename, pattern)
+			return true
+		}
+		// 支持通配符
+		if strings.Contains(pattern, "*") {
+			matched, err := filepath.Match(pattern, filename)
+			if err == nil && matched {
+				zap.S().Debugf("文件不需要加密(通配符匹配): %s (pattern=%s)", filename, pattern)
+				return true
+			}
+			matched, err = filepath.Match(pattern, decodedFilename)
+			if err == nil && matched {
+				zap.S().Debugf("文件不需要加密(通配符匹配 decoded): %s (pattern=%s)", decodedFilename, pattern)
 				return true
 			}
 		}

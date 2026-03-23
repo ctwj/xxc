@@ -203,8 +203,10 @@ func buildRes(downloadAddr, baiduPan, xunleiPan, quarkPan, ucPan, multiPan strin
 		if strings.HasPrefix(downloadAddr, "/") {
 			url = baseURL + downloadAddr
 		}
+		// 根据域名判断实际网盘类型
+		panType := detectPanType(url)
 		downloadLinks = append(downloadLinks, map[string]string{
-			"type": "直链",
+			"type": panType,
 			"url":  url,
 		})
 	}
@@ -257,4 +259,70 @@ func buildRes(downloadAddr, baiduPan, xunleiPan, quarkPan, ucPan, multiPan strin
 	}
 
 	return vo.Extends{}
+}
+
+// detectPanType 根据URL域名判断网盘类型
+func detectPanType(url string) string {
+	urlLower := strings.ToLower(url)
+
+	// 123云盘
+	if strings.Contains(urlLower, "123pan.com") ||
+		strings.Contains(urlLower, "123pan.cn") ||
+		strings.Contains(urlLower, "123684.com") ||
+		strings.Contains(urlLower, "123865.com") ||
+		strings.Contains(urlLower, "123685.com") ||
+		strings.Contains(urlLower, "123912.com") ||
+		strings.Contains(urlLower, "123592.com") {
+		return "123云盘"
+	}
+
+	// 蓝奏云盘
+	if strings.Contains(urlLower, "lanzouj.com") ||
+		strings.Contains(urlLower, "lanzoub.com") ||
+		strings.Contains(urlLower, "lanzou.com") ||
+		strings.Contains(urlLower, "lanzoui.com") ||
+		strings.Contains(urlLower, "lanzoux.com") {
+		return "蓝奏云盘"
+	}
+
+	// 天翼云盘
+	if strings.Contains(urlLower, "cloud.189.cn") {
+		return "天翼云盘"
+	}
+
+	// 迅雷云盘
+	if strings.Contains(urlLower, "pan.xunlei.com") {
+		return "迅雷云盘"
+	}
+
+	// 115云盘
+	if strings.Contains(urlLower, "115.com") ||
+		strings.Contains(urlLower, "115cdn.com") ||
+		strings.Contains(urlLower, "anxia.com") {
+		return "115云盘"
+	}
+
+	// UC云盘
+	if strings.Contains(urlLower, "drive.uc.cn") {
+		return "UC云盘"
+	}
+
+	// 阿里云盘
+	if strings.Contains(urlLower, "aliyundrive.com") ||
+		strings.Contains(urlLower, "alipan.com") {
+		return "阿里云盘"
+	}
+
+	// 百度网盘
+	if strings.Contains(urlLower, "pan.baidu.com") {
+		return "百度网盘"
+	}
+
+	// 夸克网盘
+	if strings.Contains(urlLower, "pan.quark.cn") {
+		return "夸克网盘"
+	}
+
+	// 默认为直链
+	return "直链"
 }

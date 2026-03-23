@@ -91,6 +91,7 @@ type DirectLinkDownload struct {
 	AddFiles        string `json:"add_files"`         // 逗号分隔（本地路径）
 	FileNameReplace string `json:"file_name_replace"` // 每行 old=new
 	ZipPassword     string `json:"zip_password"`      // 压缩包密码，为空则不加密
+	NoEncryptFiles  string `json:"no_encrypt_files"`  // 不加密的文件列表，逗号分隔，支持模糊匹配
 
 	// 运行时字段（不持久化）
 	uploadQueue chan *downloadTask
@@ -345,6 +346,20 @@ func (p *DirectLinkDownload) Save(article *entity.Article) error {
 				zap.String("url", link.URL),
 				zap.Int("article_id", article.ID),
 			)
+			continue
+		}
+
+		// 检查域名是否允许
+		allowedDomains := utils.ParseAllowedDomains(p.AllowedDomains)
+		if len(allowedDomains) > 0 && !utils.IsAllowedDomain(link.URL, allowedDomains) {
+			p.ctx.Log.Info("域名不在允许列表，直接保存原始链接",
+				zap.String("url", link.URL),
+			)
+			// 直接保存原始链接到saved中
+			saved = p.updateSavedLinks(saved, &DirectLinkSavedItem{
+				Type: "直链",
+				URL:  link.URL,
+			})
 			continue
 		}
 
@@ -684,15 +699,17 @@ func (p *DirectLinkDownload) processDirectLink(link DirectLinkSavedItem) (*Direc
 		deleteFiles := strings.Split(p.DeleteFiles, ",")
 		addFiles := strings.Split(p.AddFiles, ",")
 		renameRules := strings.Split(p.FileNameReplace, "\n")
+		noEncryptFiles := strings.Split(p.NoEncryptFiles, ",")
 
 		// 记录删除规则
 		p.ctx.Log.Debug("压缩包重新打包配置",
 			zap.Strings("delete_files", deleteFiles),
 			zap.Strings("add_files", addFiles),
 			zap.Bool("has_password", p.ZipPassword != ""),
+			zap.Strings("no_encrypt_files", noEncryptFiles),
 		)
 
-		result, err := utils.RepackageZip(data, deleteFiles, addFiles, renameRules, p.ZipPassword)
+		result, err := utils.RepackageZip(data, deleteFiles, addFiles, renameRules, p.ZipPassword, noEncryptFiles)
 		if err != nil {
 			p.ctx.Log.Warn("重新打包失败，使用原始文件",
 				zap.String("filename", fullName),
