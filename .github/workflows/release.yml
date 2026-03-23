@@ -28,6 +28,11 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: '1.23'
+          cache: false
+
+      - name: Download Go dependencies
+        working-directory: main
+        run: go mod download
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
