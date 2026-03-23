@@ -90,7 +90,67 @@ jobs:
           GOARCH: amd64
         working-directory: main
         run: |
+          echo "=== Pre-build check ==="
+          echo "Current directory: $(pwd)"
+          echo ""
+          echo "=== resources/admin/ ==="
+          ls -la resources/admin/
+          echo ""
+          echo "=== resources/admin/assets/ count ==="
+          ls resources/admin/assets/ | wc -l
+          echo ""
+          echo "=== Checking specific files ==="
+          ls resources/admin/assets/index.*.js 2>/dev/null || echo "No index.js files!"
+          ls resources/admin/assets/.pnpm.*.js 2>/dev/null || echo "No .pnpm.js files!"
+          echo ""
+          echo "=== Building binary ==="
           go build -ldflags="-s -w" -trimpath -o ../moss_linux_amd64 ./cmd/web/main.go
+
+      - name: Verify embed content
+        run: |
+          echo "=== Verifying embed content in binary ==="
+          # 启动服务测试
+          chmod +x moss_linux_amd64
+          timeout 10s ./moss_linux_amd64 &
+          sleep 3
+          
+          echo "=== Testing index.html ==="
+          curl -s http://localhost:9008/admin/ | head -20
+          
+          echo ""
+          echo "=== Testing JS file (should not be HTML) ==="
+          JS_FILE=$(curl -s http://localhost:9008/admin/ | grep -oP 'assets/index\.[a-f0-9]+\.js' | head -1)
+          echo "JS file: $JS_FILE"
+          if [ -n "$JS_FILE" ]; then
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -I "http://localhost:9008/admin/$JS_FILE")
+            CONTENT_TYPE=$(curl -s -I "http://localhost:9008/admin/$JS_FILE" | grep -i content-type | head -1)
+            echo "HTTP Code: $HTTP_CODE"
+            echo "Content-Type: $CONTENT_TYPE"
+            if [ "$HTTP_CODE" != "200" ]; then
+              echo "Error: JS file returned HTTP $HTTP_CODE"
+              exit 1
+            fi
+            if echo "$CONTENT_TYPE" | grep -qi "html"; then
+              echo "Error: JS file returned HTML content-type"
+              exit 1
+            fi
+          fi
+          
+          echo ""
+          echo "=== Testing CSS file ==="
+          CSS_FILE=$(curl -s http://localhost:9008/admin/ | grep -oP 'assets/index\.[a-f0-9]+\.css' | head -1)
+          echo "CSS file: $CSS_FILE"
+          if [ -n "$CSS_FILE" ]; then
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -I "http://localhost:9008/admin/$CSS_FILE")
+            echo "HTTP Code: $HTTP_CODE"
+            if [ "$HTTP_CODE" != "200" ]; then
+              echo "Error: CSS file returned HTTP $HTTP_CODE"
+              exit 1
+            fi
+          fi
+          
+          echo ""
+          echo "Embed verification passed!"
 
       - name: Install UPX
         run: |
