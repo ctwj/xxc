@@ -143,12 +143,18 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
       - name: Verify embed content
         run: |
           echo "=== Verifying embed content in binary ==="
-          # 启动服务测试
-          chmod +x moss_linux_amd64
-          timeout 10s ./moss_linux_amd64 &
+          ls -la artifacts/
+          chmod +x artifacts/moss_linux_amd64
+          timeout 10s ./artifacts/moss_linux_amd64 &
           sleep 3
           
           echo "=== Testing index.html ==="
@@ -189,19 +195,6 @@ jobs:
           echo ""
           echo "Embed verification passed!"
 
-      - name: Install UPX
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y upx-ucl
-
-      - name: Compress binary with UPX
-        run: |
-          echo "=== Before UPX compression ==="
-          ls -lh moss_linux_amd64
-          upx --best --lzma moss_linux_amd64
-          echo "=== After UPX compression ==="
-          ls -lh moss_linux_amd64
-
       - name: Get version
         id: get_version
         run: |
@@ -218,12 +211,6 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git tag ${{ steps.get_version.outputs.VERSION }}
           git push origin ${{ steps.get_version.outputs.VERSION }}
-
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-          merge-multiple: true
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
