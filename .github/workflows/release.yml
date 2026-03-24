@@ -20,6 +20,33 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+            suffix: ''
+            upx: true
+          - goos: linux
+            goarch: arm64
+            suffix: ''
+            upx: true
+          - goos: windows
+            goarch: amd64
+            suffix: '.exe'
+            upx: true
+          - goos: windows
+            goarch: arm64
+            suffix: '.exe'
+            upx: true
+          - goos: darwin
+            goarch: amd64
+            suffix: ''
+            upx: false
+          - goos: darwin
+            goarch: arm64
+            suffix: ''
+            upx: false
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -47,14 +74,38 @@ jobs:
         working-directory: admin
         run: npm run build
 
+      - name: Install UPX
+        if: matrix.upx
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y upx-ucl
+
       - name: Build backend
         env:
           CGO_ENABLED: 0
-          GOOS: linux
-          GOARCH: amd64
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
         working-directory: main
         run: |
-          go build -ldflags="-s -w" -trimpath -o ../moss_linux_amd64 ./cmd/web/main.go
+          go build -ldflags="-s -w" -trimpath -o ../moss_${{ matrix.goos }}_${{ matrix.goarch }}${{ matrix.suffix }} ./cmd/web/main.go
+
+      - name: Compress with UPX
+        if: matrix.upx
+        run: |
+          upx --best --lzma moss_${{ matrix.goos }}_${{ matrix.goarch }}${{ matrix.suffix }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: moss_${{ matrix.goos }}_${{ matrix.goarch }}
+          path: moss_${{ matrix.goos }}_${{ matrix.goarch }}${{ matrix.suffix }}
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
 
       - name: Get version
         id: get_version
@@ -73,6 +124,12 @@ jobs:
           git tag ${{ steps.get_version.outputs.VERSION }}
           git push origin ${{ steps.get_version.outputs.VERSION }}
 
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
@@ -82,16 +139,27 @@ jobs:
             ## Moss CMS ${{ steps.get_version.outputs.VERSION }}
             
             ### 下载说明
-            - `moss_linux_amd64` - Linux 64位可执行文件
+            | 文件名 | 平台 | UPX 压缩 |
+            |--------|------|----------|
+            | `moss_linux_amd64` | Linux 64位 | ✅ |
+            | `moss_linux_arm64` | Linux ARM64 | ✅ |
+            | `moss_windows_amd64.exe` | Windows 64位 | ✅ |
+            | `moss_windows_arm64.exe` | Windows ARM64 | ✅ |
+            | `moss_darwin_amd64` | macOS Intel | ❌ |
+            | `moss_darwin_arm64` | macOS Apple Silicon | ❌ |
             
             ### 使用方式
             ```bash
+            # Linux/macOS
             chmod +x moss_linux_amd64
             ./moss_linux_amd64
+            
+            # Windows
+            moss_windows_amd64.exe
             ```
             
             默认端口: 9008
             管理后台: http://localhost:9008/admin/
-          files: moss_linux_amd64
+          files: artifacts/*
           draft: false
           prerelease: false
