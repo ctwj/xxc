@@ -2,6 +2,10 @@
 <html x-data="data($refs)" x-init="init($data)" class="dute-theme">
   <head>
     <meta charset="utf-8">
+    {{ if Config.Template.FaviconIco != "" }}
+    <link rel="icon" href="{{ Config.Template.FaviconIco }}" type="image/x-icon">
+    <link rel="shortcut icon" href="{{ Config.Template.FaviconIco }}" type="image/x-icon">
+    {{ end }}
     <meta name="applicable-device" content="pc,mobile">
     <meta name="renderer" content="webkit">
     <meta http-equiv="X-UA-Compatible" content="IE=10,chrome=1">
@@ -79,8 +83,8 @@
               {{ end }}
             {{ end }}
           {{ end }}
-          <a href="/about.html">关于本站</a>
-          <a href="/custom.html">自定义页面</a>
+          <a href="/copyright.html">版权声明</a>
+          <a href="/download.html">下载说明</a>
           <a href="{{ Config.Router.GetSitemapPath() }}/article.xml">sitemap</a>
         </div>
         <!-- <div class="dute-footer-runtime">
@@ -89,7 +93,7 @@
         </div> -->
         <div class="dute-footer-inner">
           <span class="dute-footer-copy">{{ Config.Template.Footer |raw }}</span>
-          <span class="dute-footer-meta">Theme by ctwj</span>
+          <span class="dute-footer-meta">Theme by 零八软件</span>
         </div>
       </footer>
     </div>

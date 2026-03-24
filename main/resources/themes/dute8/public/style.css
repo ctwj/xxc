@@ -2227,3 +2227,405 @@
 .dute-carousel-wrap .swiper-button-next {
   right: 5px;
 }
+
+/* Empty state tip */
+.dute-empty-tip {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+  color: #8895ac;
+  font-size: 14px;
+}
+
+.dute-empty-tip span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 24px;
+  background: linear-gradient(135deg, #f8fafc, #f1f5f9);
+  border-radius: 8px;
+  border: 1px dashed #e2e8f0;
+}
+
+/* ========================================
+   Dute8 Theme Enhancement - 美化增强
+   ======================================== */
+
+/* 1. 配色标准化 - 扩展变量 */
+:root {
+  --dute-primary: #3858f6;
+  --dute-primary-dark: #2a45d9;
+  --dute-primary-light: #5a7aed;
+  --dute-primary-soft: #eaf0ff;
+  --dute-accent: #6b8cff;
+  --dute-gradient-primary: linear-gradient(135deg, #6b8cff, #3858f6);
+  --dute-gradient-accent: linear-gradient(135deg, #5a7aed, #3858f6);
+  --dute-shadow-sm: 0 2px 8px rgba(56, 88, 246, 0.1);
+  --dute-shadow-md: 0 4px 16px rgba(56, 88, 246, 0.15);
+  --dute-shadow-lg: 0 8px 32px rgba(56, 88, 246, 0.2);
+  --dute-radius-sm: 8px;
+  --dute-radius-md: 12px;
+  --dute-radius-lg: 16px;
+  --dute-transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* 2. 动画关键帧 */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes ripple {
+  to {
+    transform: scale(4);
+    opacity: 0;
+  }
+}
+
+/* 3. 卡片美化 */
+.dute-theme .card {
+  transition: var(--dute-transition);
+  box-shadow: var(--dute-shadow-sm);
+  border: 1px solid rgba(56, 88, 246, 0.08);
+  animation: fadeInUp 0.5s ease-out backwards;
+}
+
+.dute-theme .card:hover {
+  box-shadow: var(--dute-shadow-md);
+  transform: translateY(-2px);
+}
+
+.dute-theme .card-title {
+  position: relative;
+}
+
+.dute-theme .card-title i {
+  position: relative;
+}
+
+.dute-theme .card-title i::after {
+  content: '';
+  position: absolute;
+  bottom: -4px;
+  left: 0;
+  width: 100%;
+  height: 3px;
+  background: var(--dute-gradient-primary);
+  border-radius: 2px;
+  opacity: 0;
+  transition: var(--dute-transition);
+}
+
+.dute-theme .card:hover .card-title i::after {
+  opacity: 1;
+}
+
+/* 4. 按钮增强 */
+.dute-download-btn {
+  position: relative;
+  overflow: hidden;
+  transition: var(--dute-transition);
+}
+
+.dute-download-btn::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  transition: width 0.6s, height 0.6s;
+}
+
+.dute-download-btn:hover::before {
+  width: 300px;
+  height: 300px;
+}
+
+.dute-download-btn:active {
+  transform: translateY(0) scale(0.98);
+}
+
+/* 5. 导航链接动画 */
+.dute-topbar-inner a {
+  position: relative;
+  transition: var(--dute-transition);
+}
+
+.dute-topbar-inner a::after {
+  content: '';
+  position: absolute;
+  bottom: -2px;
+  left: 50%;
+  width: 0;
+  height: 2px;
+  background: var(--dute-primary);
+  transition: var(--dute-transition);
+  transform: translateX(-50%);
+}
+
+.dute-topbar-inner a:hover::after {
+  width: 100%;
+}
+
+.dute-menu .nav-item h2 > a {
+  position: relative;
+}
+
+.dute-menu .nav-item h2 > a::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 0;
+  height: 2px;
+  background: var(--dute-gradient-primary);
+  transition: var(--dute-transition);
+}
+
+.dute-menu .nav-item:hover h2 > a::after {
+  width: 100%;
+}
+
+/* 6. 列表项悬停效果 */
+.dute-recent-list li {
+  transition: var(--dute-transition);
+  border-radius: var(--dute-radius-sm);
+}
+
+.dute-recent-list li:hover {
+  background: linear-gradient(90deg, rgba(56, 88, 246, 0.05), transparent);
+  padding-left: 8px;
+}
+
+.dute-rank-list li {
+  transition: var(--dute-transition);
+  border-radius: var(--dute-radius-sm);
+}
+
+.dute-rank-list li:hover {
+  background: linear-gradient(90deg, rgba(56, 88, 246, 0.05), transparent);
+  transform: translateX(4px);
+}
+
+/* 7. 下载网格动画 */
+.dute-download-item {
+  transition: var(--dute-transition);
+}
+
+.dute-download-item:hover {
+  transform: translateY(-4px);
+}
+
+.dute-download-item:hover .dute-download-thumb {
+  box-shadow: var(--dute-shadow-md);
+}
+
+.dute-download-thumb {
+  transition: var(--dute-transition);
+}
+
+/* 8. 文章专区美化 */
+.dute-zone-pic-item {
+  transition: var(--dute-transition);
+  overflow: hidden;
+}
+
+.dute-zone-pic-item:hover {
+  transform: scale(1.02);
+}
+
+.dute-zone-pic-item:hover img {
+  transform: scale(1.1);
+}
+
+.dute-zone-pic-item img {
+  transition: transform 0.5s ease;
+}
+
+.dute-zone-text article {
+  transition: var(--dute-transition);
+  padding: 8px 12px;
+  border-radius: var(--dute-radius-sm);
+  margin: 2px 0;
+}
+
+.dute-zone-text article:hover {
+  background: linear-gradient(90deg, rgba(56, 88, 246, 0.05), transparent);
+  transform: translateX(4px);
+}
+
+/* 9. 页脚优化 */
+.dute-footer {
+  position: relative;
+}
+
+.dute-footer::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 80%;
+  max-width: 800px;
+  height: 1px;
+  background: var(--dute-gradient-primary);
+  opacity: 0.3;
+}
+
+.dute-footer-links strong {
+  color: var(--dute-primary);
+}
+
+.dute-footer-link-items a {
+  transition: var(--dute-transition);
+  position: relative;
+}
+
+.dute-footer-link-items a:hover {
+  color: var(--dute-primary);
+  transform: translateY(-2px);
+}
+
+.dute-footer-menu a {
+  transition: var(--dute-transition);
+}
+
+.dute-footer-menu a:hover {
+  color: var(--dute-primary);
+}
+
+.dute-footer-copy {
+  color: #5a6a85;
+}
+
+/* 10. 搜索框美化 */
+.dute-header-search input {
+  transition: var(--dute-transition);
+  border: 1px solid transparent;
+}
+
+.dute-header-search input:focus {
+  border-color: var(--dute-primary);
+  box-shadow: 0 0 0 3px rgba(56, 88, 246, 0.1);
+  outline: none;
+}
+
+.dute-header-search button {
+  transition: var(--dute-transition);
+}
+
+.dute-header-search button:hover {
+  background: var(--dute-primary);
+  color: white;
+}
+
+/* 11. 轮播图增强 */
+.dute-carousel-wrap {
+  animation: fadeIn 0.6s ease-out;
+}
+
+.dute-carousel-item {
+  transition: var(--dute-transition);
+}
+
+.dute-carousel-item:hover {
+  transform: scale(1.01);
+}
+
+/* 12. 响应式动画延迟 */
+.dute-home-panel > .card:nth-child(1) { animation-delay: 0.1s; }
+.dute-home-panel > .card:nth-child(2) { animation-delay: 0.2s; }
+.dute-home-panel > .card:nth-child(3) { animation-delay: 0.3s; }
+
+.dute-home-left-col .card:nth-child(1) { animation-delay: 0.1s; }
+.dute-home-left-col .card:nth-child(2) { animation-delay: 0.2s; }
+.dute-home-right-col .card:nth-child(1) { animation-delay: 0.15s; }
+.dute-home-right-col .card:nth-child(2) { animation-delay: 0.25s; }
+
+/* 13. 骨架屏效果（加载状态） */
+.skeleton {
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+/* 14. 分类标签动画 */
+.dute-mini-tabs a {
+  transition: var(--dute-transition);
+  position: relative;
+}
+
+.dute-mini-tabs a::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  width: 0;
+  height: 2px;
+  background: var(--dute-primary);
+  transition: var(--dute-transition);
+  transform: translateX(-50%);
+}
+
+.dute-mini-tabs a:hover::after {
+  width: 80%;
+}
+
+/* 15. 移动端抽屉优化 */
+.dute-drawer-panel {
+  box-shadow: -8px 0 32px rgba(0, 0, 0, 0.15);
+}
+
+.dute-drawer-panel a {
+  transition: var(--dute-transition);
+}
+
+.dute-drawer-panel a:hover {
+  background: var(--dute-primary-soft);
+  padding-left: 20px;
+}
+
+/* 16. 全局平滑滚动 */
+.dute-theme {
+  scroll-behavior: smooth;
+}
+
+/* 17. 焦点状态（可访问性） */
+.dute-theme a:focus-visible,
+.dute-theme button:focus-visible,
+.dute-theme input:focus-visible {
+  outline: 2px solid var(--dute-primary);
+  outline-offset: 2px;
+}
+
+/* 18. 选中文本样式 */
+.dute-theme ::selection {
+  background: rgba(56, 88, 246, 0.2);
+  color: var(--dute-primary-dark);
+}

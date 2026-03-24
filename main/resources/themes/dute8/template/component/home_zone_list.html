@@ -1,4 +1,9 @@
 {{ block home_zone_list(list,limit=24) }}
+{{ if len(list) == 0 }}
+<div class="dute-empty-tip">
+    <span>暂无内容，敬请期待...</span>
+</div>
+{{ else }}
 <div class="dute-zone-layout">
     <div class="dute-zone-pics">
         {{ range i, v := list }}
@@ -33,4 +38,5 @@
         {{ end }}
     </div>
 </div>
+{{ end }}
 {{ end }}

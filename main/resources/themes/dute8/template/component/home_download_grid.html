@@ -1,4 +1,9 @@
 {{ block home_download_grid(list,limit=12) }}
+{{ if len(list) == 0 }}
+<div class="dute-empty-tip">
+    <span>暂无内容，敬请期待...</span>
+</div>
+{{ else }}
 <div class="dute-download-grid">
     {{ range i, v := list }}
     {{ if i < limit }}
@@ -15,4 +20,5 @@
     {{ end }}
     {{ end }}
 </div>
+{{ end }}
 {{ end }}

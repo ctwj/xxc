@@ -220,16 +220,6 @@ jobs:
           body: |
             ## Moss CMS ${{ steps.get_version.outputs.VERSION }}
             
-            ### 下载说明
-            | 文件名 | 平台 | UPX 压缩 |
-            |--------|------|----------|
-            | `moss_linux_amd64` | Linux 64位 | ✅ |
-            | `moss_linux_arm64` | Linux ARM64 | ✅ |
-            | `moss_windows_amd64.exe` | Windows 64位 | ✅ |
-            | `moss_windows_arm64.exe` | Windows ARM64 | ✅ |
-            | `moss_darwin_amd64` | macOS Intel | ❌ |
-            | `moss_darwin_arm64` | macOS Apple Silicon | ❌ |
-            
             ### 使用方式
             ```bash
             # Linux/macOS

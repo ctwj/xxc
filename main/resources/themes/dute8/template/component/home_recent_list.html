@@ -1,4 +1,9 @@
 {{ block home_recent_list(list,limit=10) }}
+    {{ if len(list) == 0 }}
+    <div class="dute-empty-tip">
+        <span>暂无内容，敬请期待...</span>
+    </div>
+    {{ else }}
     <ul class="dute-recent-list">
         {{ range i, v := list }}
             {{ if i < limit }}
@@ -16,4 +21,5 @@
             {{ end }}
         {{ end }}
     </ul>
+    {{ end }}
 {{ end }}

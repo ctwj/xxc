@@ -2,6 +2,7 @@ package utils
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -20,6 +21,19 @@ type RepackageResult struct {
 	KeptCount     int
 	AddedCount    int
 	AddErrors     []string // 添加文件失败的错误信息
+	SkippedFiles  []string // 因错误跳过的原始文件
+}
+
+// safeOpenFile 安全打开 ZIP 文件，捕获可能的 panic
+func safeOpenFile(file *zip.File) (rc io.ReadCloser, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("panic when opening zip file %s: %v", file.Name, r)
+			zap.S().Warnf("打开 ZIP 文件发生 panic: %s, 错误: %v", file.Name, r)
+		}
+	}()
+	rc, err = file.Open()
+	return
 }
 
 // RepackageZip 重新打包 ZIP 文件
@@ -58,10 +72,14 @@ func RepackageZip(originalData []byte, deleteFiles, addFiles, renameRules []stri
 		// 应用重命名规则
 		newName := applyRenameRules(file.Name, renameRules)
 
-		// 打开原文件
-		src, err := file.Open()
+		// 打开原文件（使用安全方式，捕获可能的 panic）
+		src, err := safeOpenFile(file)
 		if err != nil {
-			return nil, err
+			// 记录错误，跳过该文件而不是整个流程失败
+			result.SkippedFiles = append(result.SkippedFiles, file.Name)
+			zap.S().Warnf("打开 ZIP 文件失败，跳过: %s, 错误: %v", file.Name, err)
+			result.KeptCount-- // 调整计数
+			continue
 		}
 
 		// 创建新文件
