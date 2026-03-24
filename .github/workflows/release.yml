@@ -38,7 +38,7 @@ jobs:
           - goos: windows
             goarch: arm64
             suffix: '.exe'
-            upx: true
+            upx: false
           - goos: darwin
             goarch: amd64
             suffix: ''
