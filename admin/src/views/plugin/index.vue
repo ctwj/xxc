@@ -12,7 +12,7 @@
     <template #action="{ record,rowIndex,column }">
       <a-button :disabled="record.hide_logs"  size="small" type="text" @click="onViewLog(record)"><template #icon><icon-bookmark :size="18" /></template></a-button>
       <a-button :disabled="record.no_options" size="small" type="text" @click="onOptions(record)"><template #icon><icon-settings :size="18" /></template></a-button>
-      <a-button :disabled="!record.run_enable" size="small" type="text" @click="run(record.id)" :loading="loadingRunObj[record.id]">
+      <a-button :disabled="!record.run_enable" size="small" type="text" @click="run(record.id)" :loading="record.running || loadingRunObj[record.id]">
         <template #icon><icon-play-circle :size="18" /></template>
       </a-button>
     </template>

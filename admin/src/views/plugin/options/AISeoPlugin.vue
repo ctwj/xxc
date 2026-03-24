@@ -3,7 +3,7 @@
     <a-switch type="round" v-model="data.enable" />
   </a-form-item>
 
-  <a-tabs type="line" default-active-key="api" :style="{ height: '600px' }">
+  <a-tabs type="line" default-active-key="api">
     <a-tab-pane key="api" title="API 配置">
       <a-space direction="vertical" :size="16" fill>
         <a-form-item label="API URL">
@@ -103,6 +103,13 @@
           <a-input-number v-model="data.batch_size" :min="1" :max="100" :style="{ width: '200px' }" />
           <template #extra>
             <a-text type="secondary">每次处理的文章数量</a-text>
+          </template>
+        </a-form-item>
+
+        <a-form-item label="Article ID">
+          <a-input-number v-model="data.article_id" :min="0" :style="{ width: '200px' }" />
+          <template #extra>
+            <a-text type="secondary">指定处理的文章 ID，为 0 时按批量处理</a-text>
           </template>
         </a-form-item>
 

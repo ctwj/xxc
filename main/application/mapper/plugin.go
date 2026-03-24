@@ -16,6 +16,7 @@ func PluginItemsToPluginInfoList(items []*pluginEntity.Plugin) (res []dto.Plugin
 		}
 		res = append(res, dto.PluginList{
 			PluginInfo:  *item.Info,
+			Running:     item.Running,
 			RunTime:     item.RunTime.Unix(),
 			RunError:    runErr,
 			RunCount:    item.RunCount,

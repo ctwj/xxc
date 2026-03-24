@@ -45,6 +45,9 @@ type AISeoPlugin struct {
 	CronExp    string `json:"cron_exp"`    // 定时表达式
 	BatchSize  int    `json:"batch_size"`  // 每次处理的文章数量（默认 10）
 
+	// 指定文章处理
+	ArticleID int `json:"article_id"` // 指定处理的文章 ID（0 表示批量处理）
+
 	// 强制重新生成（手动触发时可选）
 	ForceRegenerate bool `json:"force_regenerate"` // 是否强制重新生成（忽略已有标记）
 
@@ -116,8 +119,28 @@ func (p *AISeoPlugin) Run(ctx *pluginEntity.Plugin) error {
 	p.ctx.Log.Info("AISeoPlugin started",
 		zap.String("api_url", p.ApiURL),
 		zap.String("model", p.Model),
+		zap.Int("article_id", p.ArticleID),
 		zap.Bool("force_regenerate", p.ForceRegenerate),
 		zap.Bool("skip_published", p.SkipPublished))
+
+	// 如果指定了文章 ID，只处理该文章
+	if p.ArticleID > 0 {
+		article, err := service.Article.Get(p.ArticleID)
+		if err != nil {
+			p.ctx.Log.Error("Failed to get article", zap.Int("article_id", p.ArticleID), zap.Error(err))
+			return err
+		}
+
+		p.ctx.Log.Info("Processing single article", zap.Int("article_id", article.ID), zap.String("title", article.Title))
+
+		if err := p.processArticle(article); err != nil {
+			p.ctx.Log.Error("Failed to process article", zap.Int("article_id", article.ID), zap.Error(err))
+			return err
+		}
+
+		p.ctx.Log.Info("AISeoPlugin completed", zap.Int("success", 1))
+		return nil
+	}
 
 	// 获取未生成的文章
 	articles, err := p.getUngeneratedArticles(p.BatchSize)
