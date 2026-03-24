@@ -12,3 +12,13 @@ import '@arco-design/web-vue/dist/arco.less';
 
 
 createApp(App).use(createPinia()).use(router).use(i18n).use(ArcoVue).use(ArcoVueIcon).mount('#app')
+
+// PWA 更新提示
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.ready.then((registration) => {
+    registration.addEventListener('controllerchange', () => {
+      // 新版本已安装，刷新页面
+      window.location.reload()
+    })
+  })
+}

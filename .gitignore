@@ -99,3 +99,4 @@ demo/
 .DS_Store
 *.exe
 scripts/*
+runtime/

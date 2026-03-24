@@ -28,9 +28,13 @@ export default defineConfig({
     emptyOutDir: true,
     rollupOptions: {
       output:{
+        // 文件名不以 . 开头，避免 Go fs.FS 无法访问隐藏文件
+        chunkFileNames: 'assets/[name].[hash].js',
         manualChunks(id) {
           if (id.includes('node_modules')) {
-            return id.toString().split('node_modules/')[1].split('/')[0].toString();
+            const name = id.toString().split('node_modules/')[1].split('/')[0].toString();
+            // 移除开头的点，避免隐藏文件问题
+            return name.startsWith('.') ? name.substring(1) : name;
           }
         },
       }
@@ -41,6 +45,10 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask_icon.svg'],
+      workbox: {
+        // 不缓存过大的文件
+        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024, // 5MB
+      },
       manifest:{
         name:"moss",
         short_name:"moss",
