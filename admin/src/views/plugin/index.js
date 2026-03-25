@@ -43,5 +43,7 @@ export const columns = [
     {
         title: 'Run error',
         dataIndex: 'run_error',
+        slotName: 'runError',
+        width: 200,
     },
 ]

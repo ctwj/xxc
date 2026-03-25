@@ -78,6 +78,10 @@ func NewBaiduUtils(cookie string, logger *zap.Logger) *BaiduUtils {
 				IdleConnTimeout:     30 * time.Second,
 				DisableCompression:  true, // 禁用自动压缩处理，手动处理所有 gzip 解压缩
 			},
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				// 不自动跟随重定向，保持与 Python 版本一致
+				return http.ErrUseLastResponse
+			},
 		},
 	}
 
@@ -135,38 +139,46 @@ func (b *BaiduUtils) SetCookie(cookie string) {
 	}
 }
 
-// updateCookie 更新 Cookie 中的某个参数
+// updateCookie 更新 Cookie 中的某个参数（与 Python 版本的 update_cookie 函数一致）
 func (b *BaiduUtils) updateCookie(key, value string) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
-	// 解析现有 Cookie
-	cookiesMap := make(map[string]string)
+	// 拆分 cookie 字符串到字典（与 Python 版本一致）
+	cookiesDict := make(map[string]string)
 	cookies := strings.Split(b.Cookie, ";")
 	for _, cookie := range cookies {
 		cookie = strings.TrimSpace(cookie)
-		if idx := strings.Index(cookie, "="); idx > 0 {
-			cookieKey := strings.TrimSpace(cookie[:idx])
-			cookieValue := strings.TrimSpace(cookie[idx+1:])
-			cookiesMap[cookieKey] = cookieValue
+		if cookie == "" {
+			continue
+		}
+		kv := strings.SplitN(cookie, "=", 2)
+		if len(kv) == 2 {
+			cookiesDict[strings.TrimSpace(kv[0])] = strings.TrimSpace(kv[1])
 		}
 	}
 
-	// 更新指定参数
-	cookiesMap[key] = value
+	// 在 cookie 字典中，更新或添加指定值
+	cookiesDict[key] = value
 
-	// 重新构建 Cookie
-	var newCookies []string
-	for k, v := range cookiesMap {
-		newCookies = append(newCookies, k+"="+v)
+	// 从更新后的字典重新构建 cookie 字符串
+	var pairs []string
+	for k, v := range cookiesDict {
+		pairs = append(pairs, k+"="+v)
 	}
-	b.Cookie = strings.Join(newCookies, ";")
+	b.Cookie = strings.Join(pairs, ";")
 
 	// 更新解析后的 Cookie
 	if key == "BDUSS" {
 		b.parsedBDUSS = value
 	} else if key == "STOKEN" {
 		b.parsedSTOKEN = value
+	}
+
+	if b.Logger != nil {
+		b.Logger.Debug("更新 Cookie",
+			zap.String("key", key),
+			zap.Int("cookie_length", len(b.Cookie)))
 	}
 }
 

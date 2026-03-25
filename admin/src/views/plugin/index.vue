@@ -45,6 +45,13 @@
       <span v-else> - </span>
     </template>
 
+    <template #runError="{ record,rowIndex,column }">
+      <a-tooltip v-if="record.run_error" :content="record.run_error" position="top">
+        <div class="truncate max-w-[200px]">{{ record.run_error }}</div>
+      </a-tooltip>
+      <span v-else> - </span>
+    </template>
+
   </a-table>
 
   <a-modal v-model:visible="visibleOptions" :title="modalTitle" :width="600" title-align="start" @ok="runSaveOptions(currentID,currentOptionsData)" :ok-loading="loadingSaveOptions">

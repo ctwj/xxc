@@ -39,7 +39,8 @@ func (b *BaiduUtils) setHeaders(req *http.Request) {
 	req.Header.Set("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8,en-US;q=0.7,en-GB;q=0.6,ru;q=0.5")
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36")
 
-	// 设置 Cookie
+	// 与 Python 版本保持一致：手动设置 Cookie 到 Header
+	// Python: self.network.headers['Cookie'] = self.cookie
 	if b.Cookie != "" {
 		req.Header.Set("Cookie", b.Cookie)
 	}
@@ -69,6 +70,7 @@ func (b *BaiduUtils) readResponseBody(resp *http.Response) ([]byte, error) {
 
 // GetBdstoken 获取 bdstoken
 func (b *BaiduUtils) GetBdstoken() (string, error) {
+	// 与 Python 版本保持一致：直接调用 API，不先访问首页
 	apiURL := fmt.Sprintf("%s/api/gettemplatevariable", BaiduPanBaseURL)
 	params := url.Values{}
 	params.Set("clienttype", "0")
@@ -83,6 +85,11 @@ func (b *BaiduUtils) GetBdstoken() (string, error) {
 
 	b.setHeaders(req)
 
+	if b.Logger != nil {
+		b.Logger.Debug("获取 bdstoken 请求",
+			zap.String("url", req.URL.String()))
+	}
+
 	resp, err := b.HttpClient.Do(req)
 	if err != nil {
 		return "", err
@@ -92,6 +99,13 @@ func (b *BaiduUtils) GetBdstoken() (string, error) {
 	body, err := b.readResponseBody(resp)
 	if err != nil {
 		return "", err
+	}
+
+	// 添加调试日志
+	if b.Logger != nil {
+		b.Logger.Debug("获取 bdstoken 响应",
+			zap.Int("status", resp.StatusCode),
+			zap.String("response", string(body)))
 	}
 
 	var result map[string]any
