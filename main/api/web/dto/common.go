@@ -15,3 +15,9 @@ type Captcha struct {
 func NewCaptcha(base64, id string) *Captcha {
 	return &Captcha{Base64: base64, ID: id}
 }
+
+// UserStats 用户统计信息
+type UserStats struct {
+	Total int64 `json:"total"`
+	Today int64 `json:"today"`
+}

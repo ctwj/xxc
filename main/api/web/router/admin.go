@@ -5,6 +5,7 @@ import (
 	"moss/api/web/dto"
 	"moss/api/web/middleware"
 	"moss/domain/config"
+	"moss/domain/core/entity"
 	"moss/resources"
 	"net/http"
 	"strings"
@@ -134,15 +135,36 @@ func (r *Router) api(route fiber.Router) {
 	// dashboard
 	route.Get("/dashboard/:id", controller.Dashboard.Controller)
 
+	// user management
+	route.Post("/user/list", controller.UserList)
+	route.Post("/user/count", controller.UserCount)
+	route.Get("/user/stats", controller.UserStats)
+	route.Get("/user/get/:id", controller.UserDetail)
+	route.Post("/user/enable/:id", controller.UserEnable)
+	route.Post("/user/disable/:id", controller.UserDisable)
+	route.Post("/user/delete/:id", controller.UserDelete)
+
+	// invite code management
+	route.Post("/invite-code/list", controller.InviteCodeList)
+	route.Post("/invite-code/count", controller.InviteCodeCount)
+	route.Post("/invite-code/create", controller.InviteCodeCreate)
+	route.Post("/invite-code/delete/:id", controller.InviteCodeDelete)
+
 }
 
 func auth() any {
 	return middleware.Auth("token", func(token string) (string, bool) {
+		// 管理员 token 验证
 		if config.Config.Admin.VerifyJwtToken(token) {
 			return "administrator", true
 		}
+		// API SecretKey 验证
 		if config.Config.API.Enable && token == config.Config.API.SecretKey {
 			return "api", true
+		}
+		// 用户 token 验证
+		if _, _, ok := entity.VerifyJwtToken(token); ok {
+			return "user", true
 		}
 		return "", false
 	})

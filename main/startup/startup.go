@@ -2,6 +2,7 @@ package startup
 
 import (
 	appService "moss/application/service"
+	_ "moss/domain/core/repository"
 	"moss/infrastructure/general/command"
 	"moss/plugins"
 	"os"

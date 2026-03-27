@@ -189,6 +189,42 @@ export default {
 
 
 
+    // 用户管理相关
+    users:'用户管理',
+    inviteCodes:'邀请码',
+    email:'邮箱',
+    nickname:'昵称',
+    active:'正常',
+    disabled:'已禁用',
+    lastLogin:'最后登录',
+    totalUsers:'用户总数',
+    todayUsers:'今日新增',
+    operationSuccess:'操作成功',
+    deleteSuccess:'删除成功',
+    createSuccess:'创建成功',
+    confirmDelete:'确定要删除吗？',
+    code:'邀请码',
+    usage:'使用情况',
+    unlimited:'无限制',
+    neverExpire:'永不过期',
+    maxUses:'最大使用次数',
+    maxUsesPlaceholder:'0表示无限制',
+    expireDays:'过期天数',
+    expireDaysPlaceholder:'0表示永不过期',
+    createInviteCode:'创建邀请码',
+    enable:'启用',
+    disable:'禁用',
+    action:'操作',
+    status:'状态',
+    username:'用户名',
+    expireTime:'过期时间',
+    createTime:'创建时间',
+    emailVerified:'邮箱验证',
+    verified:'已验证',
+    unverified:'未验证',
+
+
+
     wangEditor:{
         editor: {
             more: '更多',

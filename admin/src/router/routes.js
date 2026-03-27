@@ -2,7 +2,7 @@
 
 
 import layoutMain from '@/layout/main/index.vue'
-import { IconNav,IconDashboard,IconLayers,IconFile,IconTag,IconRelation,IconComputer,IconSettings,IconStorage } from '@arco-design/web-vue/es/icon';
+import { IconNav,IconDashboard,IconLayers,IconFile,IconTag,IconRelation,IconComputer,IconSettings,IconStorage,IconUser,IconGift } from '@arco-design/web-vue/es/icon';
 
 export default [
     {
@@ -92,6 +92,18 @@ export default [
                         component: () => import('@/views/config/index.vue'),
                     }
                 ]
+            },
+            {
+                path: '/users',
+                name: 'users',
+                meta: {icon:IconUser},
+                component: () => import('@/views/user/index.vue'),
+            },
+            {
+                path: '/invite-codes',
+                name: 'invite-codes',
+                meta: {icon:IconGift},
+                component: () => import('@/views/user/InviteCode.vue'),
             },
         ]
     }

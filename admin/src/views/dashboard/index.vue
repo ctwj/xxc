@@ -2,7 +2,8 @@
   <a-space direction="vertical" size="medium" fill>
     <div class="w-full rounded-lg overflow-hidden"><System /></div>
     <div class="w-full rounded-lg overflow-hidden"><App /></div>
-    <div class="w-full rounded-lg overflow-hidden"> <Article /></div>
+    <div class="w-full rounded-lg overflow-hidden"><Article /></div>
+    <div class="w-full rounded-lg overflow-hidden"><User /></div>
     <div class="w-full rounded-lg overflow-hidden"> <Other /></div>
     <div class="w-full rounded-lg overflow-hidden"> <About /></div>
   </a-space>
@@ -12,6 +13,7 @@
   import System from './system.vue'
   import App from './app.vue'
   import Article from './article.vue'
+  import User from './user.vue'
   import Other from './other.vue'
   import About from './about.vue'
 

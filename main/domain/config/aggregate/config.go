@@ -19,6 +19,7 @@ type Config struct {
 	Sitemap  *entity.Sitemap
 	TLS      *entity.TLS
 	More     *entity.More
+	Email    *entity.Email
 }
 
 func NewConfig() *Config {
@@ -35,6 +36,7 @@ func NewConfig() *Config {
 		Sitemap:  entity.NewSitemap(),
 		TLS:      entity.NewTLS(),
 		More:     entity.NewMore(),
+		Email:    entity.NewEmail(),
 	}
 }
 
@@ -52,6 +54,7 @@ func (c *Config) Items() []service.Config {
 		c.Sitemap,
 		c.TLS,
 		c.More,
+		c.Email,
 	}
 }
 

@@ -33,4 +33,20 @@ func MigrateTable() {
 	if err := Store.MigrateTable(); err != nil {
 		log.Error("migrate store table error", log.Err(err))
 	}
+
+	if err := User.MigrateTable(); err != nil {
+		log.Error("migrate user table error", log.Err(err))
+	}
+
+	if err := InviteCode.MigrateTable(); err != nil {
+		log.Error("migrate invite_code table error", log.Err(err))
+	}
+
+	if err := UserFavorite.MigrateTable(); err != nil {
+		log.Error("migrate user_favorite table error", log.Err(err))
+	}
+
+	if err := EmailVerificationToken.MigrateTable(); err != nil {
+		log.Error("migrate email_verification_token table error", log.Err(err))
+	}
 }

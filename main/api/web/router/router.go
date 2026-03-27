@@ -58,6 +58,9 @@ func (r *Router) newFiber() *fiber.App {
 	// home
 	app.Route("/", r.RegisterHome)
 
+	// user api (前台用户接口)
+	app.Route("/api", r.RegisterUserRoutes)
+
 	return app
 }
 
