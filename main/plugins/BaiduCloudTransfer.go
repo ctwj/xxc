@@ -37,6 +37,7 @@ type BaiduCloudTransfer struct {
 	STOKEN    string `json:"stoken"`    // STOKEN（向后兼容）
 	SaveDir   string `json:"save_dir"`   // 默认保存目录
 	RateLimit int    `json:"rate_limit"` // 速率限制（次/分钟）
+	Proxy     string `json:"proxy"`      // 代理地址 (如: http://127.0.0.1:8888)
 
 	ctx         *pluginEntity.Plugin
 	httpClient  *http.Client
@@ -107,13 +108,28 @@ func (b *BaiduCloudTransfer) Info() *pluginEntity.PluginInfo {
 // Load 加载插件
 func (b *BaiduCloudTransfer) Load(ctx *pluginEntity.Plugin) error {
 	b.ctx = ctx
+
+	// 创建 Transport
+	transport := &http.Transport{
+		MaxIdleConns:        10,
+		IdleConnTimeout:     30 * time.Second,
+		DisableCompression:  true, // 禁用自动压缩处理，手动处理所有 gzip 解压缩
+	}
+
+	// 配置代理
+	if b.Proxy != "" {
+		proxyURL, err := url.Parse(b.Proxy)
+		if err != nil {
+			b.ctx.Log.Error("解析代理地址失败", zap.String("proxy", b.Proxy), zap.Error(err))
+		} else {
+			transport.Proxy = http.ProxyURL(proxyURL)
+			b.ctx.Log.Info("已配置代理", zap.String("proxy", b.Proxy))
+		}
+	}
+
 	b.httpClient = &http.Client{
-		Timeout: 30 * time.Second,
-		Transport: &http.Transport{
-			MaxIdleConns:        10,
-			IdleConnTimeout:     30 * time.Second,
-			DisableCompression:  true, // 禁用自动压缩处理，手动处理所有 gzip 解压缩
-		},
+		Timeout:   30 * time.Second,
+		Transport: transport,
 	}
 
 	// 清理 Cookie：移除换行符、回车符、制表符和多余空格
@@ -127,8 +143,8 @@ func (b *BaiduCloudTransfer) Load(ctx *pluginEntity.Plugin) error {
 		b.ctx.Log.Warn("解析 Cookie 失败", zap.Error(err))
 	}
 
-	// 初始化百度网盘工具实例
-	b.baiduUtils = baiduUtils.NewBaiduUtils(b.Cookie, b.ctx.Log)
+	// 初始化百度网盘工具实例，传入代理配置
+	b.baiduUtils = baiduUtils.NewBaiduUtilsWithProxy(b.Cookie, b.Proxy, b.ctx.Log)
 
 	b.ctx.Log.Info("百度网盘转存插件加载成功")
 	return nil
@@ -548,7 +564,16 @@ func (b *BaiduCloudTransfer) getBdstoken() (string, error) {
 
 	errno, _ := result["errno"].(float64)
 	if errno != 0 {
-		return "", fmt.Errorf("获取 bdstoken 失败, 错误码: %d", int(errno))
+		errorCode := int(errno)
+		errorMsg := baiduUtils.ErrorCodeMap[errorCode]
+		if errorMsg == "" {
+			errorMsg = "未知错误"
+		}
+		b.ctx.Log.Error("获取 bdstoken 失败",
+			zap.Int("error_code", errorCode),
+			zap.String("error_msg", errorMsg),
+			zap.String("response", string(body)))
+		return "", fmt.Errorf("获取 bdstoken 失败, 错误码: %d, 错误信息: %s", errorCode, errorMsg)
 	}
 
 	resultData, ok := result["result"].(map[string]any)
@@ -561,10 +586,7 @@ func (b *BaiduCloudTransfer) getBdstoken() (string, error) {
 		return "", errors.New("解析 bdstoken 失败")
 	}
 
-	b.ctx.Log.Debug("成功获取 bdstoken",
-		zap.String("bdstoken_length", strconv.Itoa(len(bdstoken))),
-		zap.String("bdstoken_preview", bdstoken[:minBaidu(10, len(bdstoken))]+"..."))
-
+	b.ctx.Log.Debug("成功获取 bdstoken", zap.Int("length", len(bdstoken)))
 	return bdstoken, nil
 }
 
@@ -582,7 +604,7 @@ func (b *BaiduCloudTransfer) verifyPassCode(linkURL, pwd, bdstoken string) (stri
 	b.ctx.Log.Debug("开始验证提取码",
 		zap.String("link_url", linkURL),
 		zap.String("password", pwd),
-		zap.String("bdstoken_length", strconv.Itoa(len(bdstoken))))
+		zap.Int("bdstoken_length", len(bdstoken)))
 
 	// 根据链接格式选择正确的 surl 提取方法
 	var surl string
@@ -616,9 +638,7 @@ func (b *BaiduCloudTransfer) verifyPassCode(linkURL, pwd, bdstoken string) (stri
 		}
 	}
 
-	b.ctx.Log.Debug("提取 surl",
-		zap.String("surl", surl),
-		zap.String("link_url_length", strconv.Itoa(len(linkURL))))
+	b.ctx.Log.Debug("提取 surl", zap.String("surl", surl))
 
 	params := url.Values{}
 	params.Set("surl", surl)
@@ -661,45 +681,10 @@ func (b *BaiduCloudTransfer) verifyPassCode(linkURL, pwd, bdstoken string) (stri
 	errno, _ := result["errno"].(float64)
 	if errno != 0 {
 		errorCode := int(errno)
-		responseStr := string(body)
-		
-		// 打印详细的调试信息
-		b.ctx.Log.Error("=== 验证提取码失败 - 详细信息 ===")
-		b.ctx.Log.Error("请求 URL", zap.String("url", req.URL.String()))
-		b.ctx.Log.Error("请求方法", zap.String("method", req.Method))
-		
-		// 打印所有请求头
-		b.ctx.Log.Error("请求头:")
-		for key, values := range req.Header {
-			for _, value := range values {
-				b.ctx.Log.Error(fmt.Sprintf("  %s: %s", key, value))
-			}
-		}
-		
-		// 打印请求参数
-		b.ctx.Log.Error("请求参数:")
-		b.ctx.Log.Error(fmt.Sprintf("  surl: %s", surl))
-		b.ctx.Log.Error(fmt.Sprintf("  bdstoken: %s", bdstoken))
-		b.ctx.Log.Error(fmt.Sprintf("  t: %d", time.Now().UnixMilli()))
-		b.ctx.Log.Error(fmt.Sprintf("  pwd: %s", pwd))
-		
-		// 打印请求体
-		b.ctx.Log.Error("请求体:", zap.String("body", data.Encode()))
-		
-		// 打印响应信息
-		b.ctx.Log.Error("响应状态码:", zap.Int("status", resp.StatusCode))
-		b.ctx.Log.Error("响应头:")
-		for key, values := range resp.Header {
-			for _, value := range values {
-				b.ctx.Log.Error(fmt.Sprintf("  %s: %s", key, value))
-			}
-		}
-		
-		// 打印响应体
-		b.ctx.Log.Error("响应体:", zap.String("body", responseStr))
-		b.ctx.Log.Error("错误信息:", zap.String("error", fmt.Sprintf("错误码: %d, 错误信息: %s", errorCode, baiduUtils.ErrorCodeMap[errorCode])))
-		b.ctx.Log.Error("========================================")
-
+		b.ctx.Log.Error("验证提取码失败",
+			zap.Int("error_code", errorCode),
+			zap.String("error_msg", baiduUtils.ErrorCodeMap[errorCode]),
+			zap.String("response", string(body)))
 		return "", fmt.Errorf("验证提取码失败, 错误码: %d, 错误信息: %s", errorCode, baiduUtils.ErrorCodeMap[errorCode])
 	}
 
@@ -708,11 +693,7 @@ func (b *BaiduCloudTransfer) verifyPassCode(linkURL, pwd, bdstoken string) (stri
 		return "", errors.New("解析 randsk 失败")
 	}
 
-	b.ctx.Log.Debug("验证提取码成功",
-		zap.String("surl", surl),
-		zap.String("randsk_length", strconv.Itoa(len(randsk))),
-		zap.String("randsk_preview", randsk[:min(10, len(randsk))]+"..."))
-
+	b.ctx.Log.Debug("验证提取码成功", zap.String("surl", surl))
 	return randsk, nil
 }
 
@@ -1148,9 +1129,16 @@ func (b *BaiduCloudTransfer) TestCookie() (bool, error) {
 		return false, errors.New("baidu utils not initialized")
 	}
 
+	b.ctx.Log.Info("开始测试 Cookie 有效性",
+		zap.Int("cookie_length", len(b.Cookie)),
+		zap.Bool("has_bduss", b.parsedBDUSS != ""),
+		zap.Bool("has_stoken", b.parsedSTOKEN != ""),
+		zap.String("proxy", b.Proxy))
+
 	// 尝试获取 bdstoken 来验证 Cookie 是否有效
 	bdstoken, err := b.baiduUtils.GetBdstoken()
 	if err != nil {
+		b.ctx.Log.Error("获取 bdstoken 失败", zap.Error(err))
 		return false, fmt.Errorf("获取 bdstoken 失败: %w", err)
 	}
 
@@ -1158,7 +1146,7 @@ func (b *BaiduCloudTransfer) TestCookie() (bool, error) {
 		return false, errors.New("获取的 bdstoken 为空")
 	}
 
-	b.ctx.Log.Info("Cookie 测试成功", zap.String("bdstoken", bdstoken))
+	b.ctx.Log.Info("Cookie 测试成功", zap.Int("bdstoken_length", len(bdstoken)))
 	return true, nil
 }
 

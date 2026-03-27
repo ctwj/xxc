@@ -86,8 +86,7 @@ func (b *BaiduUtils) GetBdstoken() (string, error) {
 	b.setHeaders(req)
 
 	if b.Logger != nil {
-		b.Logger.Debug("获取 bdstoken 请求",
-			zap.String("url", req.URL.String()))
+		b.Logger.Debug("GetBdstoken 请求", zap.String("url", req.URL.String()))
 	}
 
 	resp, err := b.HttpClient.Do(req)
@@ -101,13 +100,6 @@ func (b *BaiduUtils) GetBdstoken() (string, error) {
 		return "", err
 	}
 
-	// 添加调试日志
-	if b.Logger != nil {
-		b.Logger.Debug("获取 bdstoken 响应",
-			zap.Int("status", resp.StatusCode),
-			zap.String("response", string(body)))
-	}
-
 	var result map[string]any
 	if err := json.Unmarshal(body, &result); err != nil {
 		return "", err
@@ -119,6 +111,12 @@ func (b *BaiduUtils) GetBdstoken() (string, error) {
 		errorMsg := ErrorCodeMap[errorCode]
 		if errorMsg == "" {
 			errorMsg = "未知错误"
+		}
+		if b.Logger != nil {
+			b.Logger.Error("获取 bdstoken 失败",
+				zap.Int("error_code", errorCode),
+				zap.String("error_msg", errorMsg),
+				zap.String("response", string(body)))
 		}
 		return "", fmt.Errorf("获取 bdstoken 失败, 错误码: %d, 错误信息: %s", errorCode, errorMsg)
 	}
@@ -136,6 +134,10 @@ func (b *BaiduUtils) GetBdstoken() (string, error) {
 	b.mu.Lock()
 	b.bdstoken = bdstoken
 	b.mu.Unlock()
+
+	if b.Logger != nil {
+		b.Logger.Debug("获取 bdstoken 成功", zap.Int("length", len(bdstoken)))
+	}
 
 	return bdstoken, nil
 }
@@ -389,4 +391,12 @@ func (b *BaiduUtils) CreateShare(fsIDs []int64, period, pwd string) (string, err
 	}
 
 	return shareURL, nil
+}
+
+// minLen 返回两个整数中的较小值
+func minLen(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }

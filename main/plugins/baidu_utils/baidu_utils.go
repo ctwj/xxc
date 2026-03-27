@@ -2,6 +2,7 @@ package baidu_utils
 
 import (
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -48,6 +49,7 @@ type BaiduUtils struct {
 
 	// 配置
 	Cookie string
+	Proxy  string
 
 	// 解析后的 Cookie
 	parsedBDUSS string
@@ -68,16 +70,40 @@ type BaiduUtils struct {
 
 // NewBaiduUtils 创建百度网盘工具实例
 func NewBaiduUtils(cookie string, logger *zap.Logger) *BaiduUtils {
+	return NewBaiduUtilsWithProxy(cookie, "", logger)
+}
+
+// NewBaiduUtilsWithProxy 创建百度网盘工具实例（支持代理）
+func NewBaiduUtilsWithProxy(cookie string, proxy string, logger *zap.Logger) *BaiduUtils {
+	// 创建 Transport
+	transport := &http.Transport{
+		MaxIdleConns:        10,
+		IdleConnTimeout:     30 * time.Second,
+		DisableCompression:  true, // 禁用自动压缩处理，手动处理所有 gzip 解压缩
+	}
+
+	// 配置代理
+	if proxy != "" {
+		proxyURL, err := url.Parse(proxy)
+		if err != nil {
+			if logger != nil {
+				logger.Error("解析代理地址失败", zap.String("proxy", proxy), zap.Error(err))
+			}
+		} else {
+			transport.Proxy = http.ProxyURL(proxyURL)
+			if logger != nil {
+				logger.Info("baidu_utils 已配置代理", zap.String("proxy", proxy))
+			}
+		}
+	}
+
 	b := &BaiduUtils{
 		Cookie: cookie,
+		Proxy:  proxy,
 		Logger: logger,
 		HttpClient: &http.Client{
-			Timeout: 30 * time.Second,
-			Transport: &http.Transport{
-				MaxIdleConns:        10,
-				IdleConnTimeout:     30 * time.Second,
-				DisableCompression:  true, // 禁用自动压缩处理，手动处理所有 gzip 解压缩
-			},
+			Timeout:   30 * time.Second,
+			Transport: transport,
 			CheckRedirect: func(req *http.Request, via []*http.Request) error {
 				// 不自动跟随重定向，保持与 Python 版本一致
 				return http.ErrUseLastResponse

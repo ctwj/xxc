@@ -66,6 +66,15 @@
     </template>
   </a-form-item>
 
+  <a-form-item label="代理地址">
+    <a-input v-model="data.proxy" placeholder="http://127.0.0.1:8888" class="input" />
+    <template #extra>
+      <a-typography-text type="secondary" class="text-xs">
+        可选配置。设置代理后，所有 API 请求将通过代理发送，可用于调试。例如：http://127.0.0.1:8888
+      </a-typography-text>
+    </template>
+  </a-form-item>
+
 </template>
 
 <script setup>
