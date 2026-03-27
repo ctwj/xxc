@@ -74,7 +74,7 @@ func (b *BaiduUtils) GetBdstoken() (string, error) {
 	apiURL := fmt.Sprintf("%s/api/gettemplatevariable", BaiduPanBaseURL)
 	params := url.Values{}
 	params.Set("clienttype", "0")
-	params.Set("app_id", "38824127")
+	params.Set("app_id", "250528")
 	params.Set("web", "1")
 	params.Set(`fields`, `["bdstoken","token","uk","isdocuser","servertime"]`)
 
