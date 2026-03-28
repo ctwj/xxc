@@ -20,11 +20,27 @@
   </a-form-item>
 
   <a-form-item label="启用水印">
-    <a-switch type="round" v-model="data.watermark_enable">
-      <template #checked>启用</template>
-      <template #unchecked>禁用</template>
-    </a-switch>
+    <a-space>
+      <a-switch type="round" v-model="data.watermark_enable">
+        <template #checked>启用</template>
+        <template #unchecked>禁用</template>
+      </a-switch>
+      <a-button v-if="data.watermark_enable" size="small" type="outline" @click="previewWatermark" :loading="loadingPreview">
+        <template #icon><icon-eye /></template>
+        预览水印
+      </a-button>
+    </a-space>
   </a-form-item>
+
+  <!-- 水印预览模态框 -->
+  <a-modal v-model:visible="visiblePreview" title="水印预览" :width="500" :footer="false" unmount-on-close>
+    <div class="text-center">
+      <a-spin :loading="loadingPreview" tip="生成预览中...">
+        <img v-if="previewUrl" :src="previewUrl" alt="水印预览" class="max-w-full rounded shadow" />
+      </a-spin>
+      <a-alert v-if="previewError" type="error" class="mt-4">{{ previewError }}</a-alert>
+    </div>
+  </a-modal>
 
   <template v-if="data.enable_on_create || data.enable_on_update">
 
@@ -161,12 +177,45 @@
           <a-form-item label="旋转角度(度)">
             <a-slider v-model="data.watermark_text_rotate" :min="-45" :max="45" show-input />
           </a-form-item>
+
+          <a-divider>描边设置</a-divider>
+          <a-form-item label="描边颜色" help="留空则不启用描边">
+            <a-space>
+              <a-color-picker v-model="data.watermark_stroke_color" :show-history="true" />
+              <a-button v-if="data.watermark_stroke_color" size="small" @click="data.watermark_stroke_color = ''">清除</a-button>
+            </a-space>
+          </a-form-item>
+          <a-form-item v-if="data.watermark_stroke_color" label="描边宽度(像素)">
+            <a-input-number v-model="data.watermark_stroke_width" class="numberInput" :min="1" :max="10" />
+          </a-form-item>
+
           <a-divider>背景设置</a-divider>
-          <a-form-item label="背景颜色">
-            <a-color-picker v-model="data.watermark_bg_color" :show-history="true" />
+          <a-form-item label="背景颜色" help="留空则无背景，与渐变背景互斥">
+            <a-space>
+              <a-color-picker v-model="data.watermark_bg_color" :show-history="true" />
+              <a-button v-if="data.watermark_bg_color" size="small" @click="data.watermark_bg_color = ''">清除</a-button>
+            </a-space>
           </a-form-item>
           <a-form-item label="圆角半径(像素)">
             <a-input-number v-model="data.watermark_bg_radius" class="numberInput" :min="0" :max="50" />
+          </a-form-item>
+          <a-form-item label="内边距(像素)" help="留空使用字体大小的1/3">
+            <a-input-number v-model="data.watermark_bg_padding" class="numberInput" :min="0" :max="50" />
+          </a-form-item>
+
+          <a-divider>渐变背景</a-divider>
+          <a-form-item label="渐变起始颜色" help="设置后将覆盖纯色背景">
+            <a-space>
+              <a-color-picker v-model="data.watermark_bg_gradient_start" :show-history="true" />
+              <a-button v-if="data.watermark_bg_gradient_start" size="small" @click="data.watermark_bg_gradient_start = ''">清除</a-button>
+            </a-space>
+          </a-form-item>
+          <a-form-item v-if="data.watermark_bg_gradient_start" label="渐变结束颜色">
+            <a-color-picker v-model="data.watermark_bg_gradient_end" :show-history="true" />
+          </a-form-item>
+          <a-form-item v-if="data.watermark_bg_gradient_start && data.watermark_bg_gradient_end" label="渐变角度">
+            <a-slider v-model="data.watermark_bg_gradient_angle" :min="0" :max="360" show-input />
+            <div class="text-xs text-gray-500 mt-1">0=从左到右，90=从上到下，180=从右到左，270=从下到上</div>
           </a-form-item>
         </template>
 
@@ -222,9 +271,41 @@
 
 
 <script setup>
- import {inject} from "vue";
- const data = inject("options")
+ import {inject, ref} from "vue";
+ import {pluginPreviewWatermark, pluginSaveOptions} from "@/api/index.js";
+ import {Message} from '@arco-design/web-vue';
+ import {t} from '@/locale';
 
+ const data = inject("options")
+ const currentID = inject("currentID")
+
+ // 预览相关
+ const visiblePreview = ref(false)
+ const previewUrl = ref('')
+ const previewError = ref('')
+ const loadingPreview = ref(false)
+
+ async function previewWatermark() {
+   loadingPreview.value = true
+   previewError.value = ''
+   previewUrl.value = ''
+
+   try {
+     // 先保存当前配置
+     await pluginSaveOptions(currentID.value, data.value)
+     Message.success(t('message.success', [t('save')]))
+
+     // 再生成预览
+     visiblePreview.value = true
+     const blob = await pluginPreviewWatermark(currentID.value)
+     previewUrl.value = URL.createObjectURL(blob)
+   } catch (e) {
+     previewError.value = e.message || '预览生成失败'
+     visiblePreview.value = true
+   } finally {
+     loadingPreview.value = false
+   }
+ }
 </script>
 
 <style scoped>

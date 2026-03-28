@@ -51,3 +51,18 @@ func PluginTestCookie(ctx *fiber.Ctx) error {
 func PluginGetDirectories(ctx *fiber.Ctx) error {
 	return ctx.JSON(mapper.MessageResultData(service.Plugin.GetDirectories(ctx.Params("id"), string(ctx.Body()))))
 }
+
+// PluginPreviewWatermark 预览水印效果
+func PluginPreviewWatermark(ctx *fiber.Ctx) error {
+	imageData, err := service.Plugin.PreviewWatermark(ctx.Params("id"))
+	if err != nil {
+		return ctx.JSON(mapper.MessageResult(err))
+	}
+	
+	// 设置响应头并返回图片
+	ctx.Set("Content-Type", "image/jpeg")
+	ctx.Set("Cache-Control", "no-cache, no-store, must-revalidate")
+	ctx.Set("Pragma", "no-cache")
+	ctx.Set("Expires", "0")
+	return ctx.Send(imageData)
+}

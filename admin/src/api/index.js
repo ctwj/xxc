@@ -1,4 +1,4 @@
-import {useGet,usePost,usePostData,useGetData} from "./hook";
+import {useGet,usePost,usePostData,useGetData,useGetBlob} from "./hook";
 
 export const adminExists = () => useGet("/admin/exists");
 export const adminCreate = (data) => usePost("/admin/create",data);
@@ -60,6 +60,7 @@ export const pluginCronStart= (id) => usePost(`/plugin/cron/start/${id}`);
 export const pluginCronStop = (id) => usePost(`/plugin/cron/stop/${id}`);
 export const pluginCronExp = (id,data) => usePost(`/plugin/cron/exp/${id}`, data);
 export const pluginLogList = (id,params) => useGetData(`/plugin/log/list/${id}`,params);
+export const pluginPreviewWatermark = (id) => useGetBlob(`/plugin/previewWatermark/${id}`);
 
 
 export const dashboardData = (id) => useGetData(`/dashboard/${id}`);

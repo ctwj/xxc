@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"image"
+	"image/color"
 	"io"
 	"mime/multipart"
 	"moss/domain/config"
@@ -121,6 +122,16 @@ type SaveArticleImages struct {
 	WatermarkBgColor    string `json:"watermark_bg_color"`    // 背景颜色 (十六进制,如 "#000000"), 空字符串表示无背景
 	WatermarkBgRadius   int    `json:"watermark_bg_radius"`   // 背景圆角半径(像素),0表示无圆角
 
+	// 新增：描边配置
+	WatermarkStrokeColor string `json:"watermark_stroke_color"` // 描边颜色 (十六进制,如 "#000000"), 空字符串表示无描边
+	WatermarkStrokeWidth int    `json:"watermark_stroke_width"` // 描边宽度(像素)
+
+	// 新增：渐变背景配置
+	WatermarkBgGradientStart string `json:"watermark_bg_gradient_start"` // 渐变起始颜色 (十六进制), 与 BgColor 互斥
+	WatermarkBgGradientEnd   string `json:"watermark_bg_gradient_end"`   // 渐变结束颜色 (十六进制)
+	WatermarkBgGradientAngle int    `json:"watermark_bg_gradient_angle"` // 渐变角度 (0-360), 0=从左到右, 90=从上到下
+	WatermarkBgPadding       int    `json:"watermark_bg_padding"`        // 背景内边距(像素), 默认为字体大小的1/3
+
 	// 图片水印配置
 	WatermarkImagePath   string `json:"watermark_image_path"`   // 水印图片路径
 	WatermarkImageScale  int    `json:"watermark_image_scale"`  // 缩放比例 (0-100)
@@ -169,6 +180,13 @@ func NewSaveArticleImages() *SaveArticleImages {
 		WatermarkBgRadius:    0,     // 默认无圆角
 		WatermarkImageScale:  20,
 		WatermarkImageRotate: 0,
+		// 新增配置默认值
+		WatermarkStrokeColor:     "",  // 默认无描边
+		WatermarkStrokeWidth:     0,
+		WatermarkBgGradientStart: "",  // 默认无渐变
+		WatermarkBgGradientEnd:   "",
+		WatermarkBgGradientAngle: 0,
+		WatermarkBgPadding:       0,   // 默认使用字体大小的1/3
 	}
 }
 
@@ -1030,7 +1048,20 @@ func (s *SaveArticleImages) applyWatermark(file []byte) ([]byte, error) {
 		watermarkConfig.Type = imagex.WatermarkTypeText
 		return imagex.New().
 			SetWatermarkConfig(watermarkConfig).
-			SetTextWatermark(s.WatermarkText, s.WatermarkFontSize, s.WatermarkFontColor, s.WatermarkTextRotate, s.WatermarkBgColor, s.WatermarkBgRadius).
+			SetTextWatermarkEx(
+				s.WatermarkText,
+				s.WatermarkFontSize,
+				s.WatermarkFontColor,
+				s.WatermarkTextRotate,
+				s.WatermarkBgColor,
+				s.WatermarkBgRadius,
+				s.WatermarkStrokeColor,
+				s.WatermarkStrokeWidth,
+				s.WatermarkBgGradientStart,
+				s.WatermarkBgGradientEnd,
+				s.WatermarkBgGradientAngle,
+				s.WatermarkBgPadding,
+			).
 			AddWatermarkByte(file)
 
 	case "image":
@@ -1123,4 +1154,117 @@ func (s *SaveArticleImages) loadWatermarkImage() ([]byte, error) {
 		zap.Int("size", len(data)))
 
 	return data, nil
+}
+
+// PreviewWatermark 生成水印预览图片
+// 返回带有水印的预览图片字节数据
+func (s *SaveArticleImages) PreviewWatermark() ([]byte, error) {
+	// 生成一个示例图片（400x300 的渐变背景图）
+	previewImg := s.generatePreviewBaseImage(400, 300)
+
+	// 如果未启用水印，直接返回原图
+	if !s.WatermarkEnable {
+		return imagex.New().Image2Byte(previewImg), nil
+	}
+
+	// 构建水印配置
+	watermarkConfig := &imagex.WatermarkConfig{
+		Enabled:     true,
+		Position:    imagex.WatermarkPosition(s.WatermarkPosition),
+		Opacity:     float64(s.WatermarkOpacity) / 100.0,
+		Margin:      s.WatermarkMargin,
+		TileSpacing: s.WatermarkTileSpacing,
+		MinWidth:    s.WatermarkMinWidth,
+	}
+
+	// 根据类型设置水印
+	switch s.WatermarkType {
+	case "text":
+		if s.WatermarkText == "" {
+			return imagex.New().Image2Byte(previewImg), nil
+		}
+		watermarkConfig.Type = imagex.WatermarkTypeText
+		return imagex.New().
+			SetWatermarkConfig(watermarkConfig).
+			SetTextWatermarkEx(
+				s.WatermarkText,
+				s.WatermarkFontSize,
+				s.WatermarkFontColor,
+				s.WatermarkTextRotate,
+				s.WatermarkBgColor,
+				s.WatermarkBgRadius,
+				s.WatermarkStrokeColor,
+				s.WatermarkStrokeWidth,
+				s.WatermarkBgGradientStart,
+				s.WatermarkBgGradientEnd,
+				s.WatermarkBgGradientAngle,
+				s.WatermarkBgPadding,
+			).
+			AddWatermarkByte(imagex.New().Image2Byte(previewImg))
+
+	case "image":
+		if s.WatermarkImagePath == "" {
+			return imagex.New().Image2Byte(previewImg), nil
+		}
+		// 加载水印图片
+		watermarkImageData, err := s.loadWatermarkImage()
+		if err != nil {
+			return nil, fmt.Errorf("load watermark image failed: %w", err)
+		}
+		if len(watermarkImageData) == 0 {
+			return imagex.New().Image2Byte(previewImg), nil
+		}
+
+		watermarkConfig.Type = imagex.WatermarkTypeImage
+		scaleRatio := float64(s.WatermarkImageScale) / 100.0
+		return imagex.New().
+			SetWatermarkConfig(watermarkConfig).
+			SetImageWatermark(watermarkImageData, scaleRatio, s.WatermarkImageRotate).
+			AddWatermarkByte(imagex.New().Image2Byte(previewImg))
+
+	default:
+		return imagex.New().Image2Byte(previewImg), nil
+	}
+}
+
+// generatePreviewBaseImage 生成预览基础图片（渐变背景）
+func (s *SaveArticleImages) generatePreviewBaseImage(width, height int) image.Image {
+	rgba := image.NewRGBA(image.Rect(0, 0, width, height))
+
+	// 生成从左上到右下的渐变背景
+	for y := 0; y < height; y++ {
+		for x := 0; x < width; x++ {
+			// 计算渐变颜色（从浅灰到深灰）
+			ratio := float64(x+y) / float64(width+height)
+			gray := uint8(240 - ratio*80)
+			rgba.SetRGBA(x, y, color.RGBA{R: gray, G: gray, B: gray, A: 255})
+		}
+	}
+
+	// 添加一些装饰元素（模拟图片内容）
+	s.drawPreviewContent(rgba, width, height)
+
+	return rgba
+}
+
+// drawPreviewContent 在预览图上绘制模拟内容
+func (s *SaveArticleImages) drawPreviewContent(rgba *image.RGBA, width, height int) {
+	// 绘制一些模拟的矩形区域（模拟图片内容）
+	contentAreas := []struct {
+		x, y, w, h int
+		color      color.RGBA
+	}{
+		{50, 50, 120, 80, color.RGBA{R: 200, G: 220, B: 240, A: 255}},   // 左上区域
+		{200, 60, 150, 100, color.RGBA{R: 220, G: 200, B: 240, A: 255}}, // 右上区域
+		{60, 180, 100, 80, color.RGBA{R: 240, G: 220, B: 200, A: 255}},  // 左下区域
+		{180, 200, 160, 60, color.RGBA{R: 200, G: 240, B: 220, A: 255}}, // 右下区域
+	}
+
+	for _, area := range contentAreas {
+		for y := area.y; y < area.y+area.h && y < height; y++ {
+			for x := area.x; x < area.x+area.w && x < width; x++ {
+				rgba.SetRGBA(x, y, area.color)
+			}
+		}
+	}
 }

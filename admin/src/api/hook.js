@@ -28,3 +28,8 @@ export function useGetRaw(url, params){
 export function usePostRaw(url, data){
     return axios.post(url, data)
 }
+
+export async function useGetBlob(url, params){
+    const response = await axios.get(url, {params: params, responseType: 'blob'})
+    return response.data
+}

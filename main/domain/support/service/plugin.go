@@ -289,3 +289,18 @@ func (p *PluginService) GetDirectories(id string, body string) (result interface
 	
 	return nil, errors.New("plugin does not support get directories")
 }
+
+// PreviewWatermark 预览水印效果
+func (p *PluginService) PreviewWatermark(id string) ([]byte, error) {
+	item, err := p.Get(id)
+	if err != nil {
+		return nil, err
+	}
+	
+	// 尝试调用插件的 PreviewWatermark 方法
+	if preview, ok := item.Entry.(interface{ PreviewWatermark() ([]byte, error) }); ok {
+		return preview.PreviewWatermark()
+	}
+	
+	return nil, errors.New("plugin does not support watermark preview")
+}

@@ -8,6 +8,7 @@ import (
 	"image/draw"
 	_ "image/gif"
 	"image/jpeg"
+	"math"
 	_ "image/png"
 
 	"github.com/muesli/smartcrop"
@@ -62,6 +63,14 @@ type TextWatermarkConfig struct {
 	RotateAngle int    // 旋转角度(度),0表示不旋转
 	BgColor     string // 背景颜色 (十六进制,如 "#000000"), 空字符串表示无背景
 	BgRadius    int    // 背景圆角半径(像素),0表示无圆角
+	// 新增：描边配置
+	StrokeColor string // 描边颜色 (十六进制,如 "#000000"), 空字符串表示无描边
+	StrokeWidth int    // 描边宽度(像素)
+	// 新增：渐变背景配置
+	BgGradientStart string // 渐变起始颜色 (十六进制), 与 BgColor 互斥
+	BgGradientEnd   string // 渐变结束颜色 (十六进制)
+	BgGradientAngle int    // 渐变角度 (0-360), 0=从左到右, 90=从上到下
+	BgPadding       int    // 背景内边距(像素), 默认为字体大小的1/3
 }
 
 // ImageWatermarkConfig 图片水印配置
@@ -274,6 +283,25 @@ func (i *Image) SetTextWatermark(text string, fontSize int, fontColor string, ro
 	return i
 }
 
+// SetTextWatermarkEx 设置文字水印参数（扩展版，支持描边和渐变）
+func (i *Image) SetTextWatermarkEx(text string, fontSize int, fontColor string, rotateAngle int, bgColor string, bgRadius int, strokeColor string, strokeWidth int, bgGradientStart string, bgGradientEnd string, bgGradientAngle int, bgPadding int) *Image {
+	i.textWatermark = &TextWatermarkConfig{
+		Text:            text,
+		FontSize:        fontSize,
+		FontColor:       fontColor,
+		RotateAngle:     rotateAngle,
+		BgColor:         bgColor,
+		BgRadius:        bgRadius,
+		StrokeColor:     strokeColor,
+		StrokeWidth:     strokeWidth,
+		BgGradientStart: bgGradientStart,
+		BgGradientEnd:   bgGradientEnd,
+		BgGradientAngle: bgGradientAngle,
+		BgPadding:       bgPadding,
+	}
+	return i
+}
+
 // SetImageWatermark 设置图片水印参数
 func (i *Image) SetImageWatermark(imageData []byte, scaleRatio float64, rotateAngle int) *Image {
 	i.imageWatermark = &ImageWatermarkConfig{
@@ -348,114 +376,28 @@ func (i *Image) AddTextWatermark(img image.Image) (image.Image, error) {
 		fontColor = color.RGBA{255, 255, 255, 255} // 默认白色
 	}
 
-	// 加载字体文件
-	fontBytes, err := resources.App.ReadFile("app/comic.ttf")
+	// 解析描边颜色
+	var strokeColor color.RGBA
+	var hasStroke bool
+	if textConfig.StrokeColor != "" && textConfig.StrokeWidth > 0 {
+		strokeColor, err = parseHexColor(textConfig.StrokeColor)
+		hasStroke = err == nil
+	}
+
+	// 加载字体文件（优先使用中文字体，支持中文水印）
+	fontBytes, err := resources.App.ReadFile("app/font.ttf") // 优先加载自定义中文字体
+	if err != nil {
+		fontBytes, err = resources.App.ReadFile("app/comic.ttf") // 回退到默认英文字体
+	}
 	if err != nil {
 		// 回退到基础字体
-		face := basicfont.Face7x13
-		fontSize := textConfig.FontSize
-		if fontSize < 12 {
-			fontSize = 12
-		}
-
-		fgCol := color.NRGBA{
-			R: uint8(fontColor.R),
-			G: uint8(fontColor.G),
-			B: uint8(fontColor.B),
-			A: uint8(config.Opacity * 255),
-		}
-
-		textWidth := font.MeasureString(face, textConfig.Text).Ceil()
-		textHeight := face.Metrics().Height.Ceil()
-
-		// 计算背景尺寸和位置（添加一些内边距）
-		padding := fontSize / 3
-		bgWidth := textWidth + padding*2
-		bgHeight := textHeight + padding*2
-		x, y := i.computeWatermarkPosition(bounds.Dx(), bounds.Dy(), bgWidth, bgHeight)
-
-		// 绘制背景
-		if textConfig.BgColor != "" {
-			bgColor, err := parseHexColor(textConfig.BgColor)
-			if err == nil {
-				bgColorWithAlpha := color.RGBA{
-					R: bgColor.R,
-					G: bgColor.G,
-					B: bgColor.B,
-					A: uint8(config.Opacity * 255),
-				}
-				drawRoundedRect(rgba, x, y, bgWidth, bgHeight, textConfig.BgRadius, bgColorWithAlpha)
-			}
-		}
-
-		// 绘制文字（在背景上垂直居中）
-		textX := x + padding
-		textY := y + padding + face.Metrics().Ascent.Ceil()
-
-		drawer := font.Drawer{
-			Dst:  rgba,
-			Src:  image.NewUniform(fgCol),
-			Face: face,
-			Dot:  fixed.Point26_6{X: fixed.I(textX), Y: fixed.I(textY)},
-		}
-		drawer.DrawString(textConfig.Text)
-
-		return rgba, nil
+		return i.drawTextWithBasicFont(rgba, textConfig, config, fontColor, strokeColor, hasStroke, basicfont.Face7x13)
 	}
 
 	// 解析字体
 	opFont, err := opentype.Parse(fontBytes)
 	if err != nil {
-		// 回退到基础字体
-		face := basicfont.Face7x13
-		fontSize := textConfig.FontSize
-		if fontSize < 12 {
-			fontSize = 12
-		}
-
-		fgCol := color.NRGBA{
-			R: uint8(fontColor.R),
-			G: uint8(fontColor.G),
-			B: uint8(fontColor.B),
-			A: uint8(config.Opacity * 255),
-		}
-
-		textWidth := font.MeasureString(face, textConfig.Text).Ceil()
-		textHeight := face.Metrics().Height.Ceil()
-
-		// 计算背景尺寸和位置（添加一些内边距）
-		padding := fontSize / 3
-		bgWidth := textWidth + padding*2
-		bgHeight := textHeight + padding*2
-		x, y := i.computeWatermarkPosition(bounds.Dx(), bounds.Dy(), bgWidth, bgHeight)
-
-		// 绘制背景
-		if textConfig.BgColor != "" {
-			bgColor, err := parseHexColor(textConfig.BgColor)
-			if err == nil {
-				bgColorWithAlpha := color.RGBA{
-					R: bgColor.R,
-					G: bgColor.G,
-					B: bgColor.B,
-					A: uint8(config.Opacity * 255),
-				}
-				drawRoundedRect(rgba, x, y, bgWidth, bgHeight, textConfig.BgRadius, bgColorWithAlpha)
-			}
-		}
-
-		// 绘制文字（在背景上垂直居中）
-		textX := x + padding
-		textY := y + padding + face.Metrics().Ascent.Ceil()
-
-		drawer := font.Drawer{
-			Dst:  rgba,
-			Src:  image.NewUniform(fgCol),
-			Face: face,
-			Dot:  fixed.Point26_6{X: fixed.I(textX), Y: fixed.I(textY)},
-		}
-		drawer.DrawString(textConfig.Text)
-
-		return rgba, nil
+		return i.drawTextWithBasicFont(rgba, textConfig, config, fontColor, strokeColor, hasStroke, basicfont.Face7x13)
 	}
 
 	// 创建可缩放字体
@@ -470,11 +412,47 @@ func (i *Image) AddTextWatermark(img image.Image) (image.Image, error) {
 		Hinting: font.HintingFull,
 	})
 	if err != nil {
-		// 回退到基础字体
-		face = basicfont.Face7x13
+		return i.drawTextWithBasicFont(rgba, textConfig, config, fontColor, strokeColor, hasStroke, basicfont.Face7x13)
 	}
 
-	// 使用字体,设置透明度
+	// 计算文字尺寸
+	textWidth := font.MeasureString(face, textConfig.Text).Ceil()
+	textHeight := face.Metrics().Height.Ceil()
+	ascent := face.Metrics().Ascent.Ceil()
+	descent := face.Metrics().Descent.Ceil()
+
+	// 计算背景内边距（优先使用自定义配置）
+	padding := textConfig.BgPadding
+	if padding <= 0 {
+		padding = fontSize / 3
+	}
+
+	// 计算水印图层尺寸
+	bgWidth := textWidth + padding*2
+	bgHeight := textHeight + padding*2
+
+	// 创建独立的水印图层
+	watermarkLayer := image.NewRGBA(image.Rect(0, 0, bgWidth, bgHeight))
+
+	// 在水印图层上绘制背景
+	i.drawBackgroundOnLayer(watermarkLayer, textConfig, config, 0, 0, bgWidth, bgHeight)
+
+	// 计算文字绘制位置（真正垂直居中）
+	textX := padding
+	textY := padding + ascent + (textHeight-ascent-descent)/2
+
+	// 绘制描边（如果启用）
+	if hasStroke {
+		strokeCol := color.NRGBA{
+			R: uint8(strokeColor.R),
+			G: uint8(strokeColor.G),
+			B: uint8(strokeColor.B),
+			A: uint8(config.Opacity * 255),
+		}
+		i.drawTextWithStroke(watermarkLayer, face, textConfig.Text, textX, textY, strokeCol, textConfig.StrokeWidth)
+	}
+
+	// 绘制文字
 	fgCol := color.NRGBA{
 		R: uint8(fontColor.R),
 		G: uint8(fontColor.G),
@@ -482,17 +460,114 @@ func (i *Image) AddTextWatermark(img image.Image) (image.Image, error) {
 		A: uint8(config.Opacity * 255),
 	}
 
+	drawer := font.Drawer{
+		Dst:  watermarkLayer,
+		Src:  image.NewUniform(fgCol),
+		Face: face,
+		Dot:  fixed.Point26_6{X: fixed.I(textX), Y: fixed.I(textY)},
+	}
+	drawer.DrawString(textConfig.Text)
+
+	// 应用旋转（如果有）
+	if textConfig.RotateAngle != 0 {
+		watermarkLayer = rotateImage(watermarkLayer, float64(textConfig.RotateAngle)).(*image.RGBA)
+	}
+
+	// 计算水印位置并绘制到原图
+	wmBounds := watermarkLayer.Bounds()
+	x, y := i.computeWatermarkPosition(bounds.Dx(), bounds.Dy(), wmBounds.Dx(), wmBounds.Dy())
+	i.applyWatermarkWithOpacity(rgba, watermarkLayer, x, y, 1.0) // 透明度已在绘制时应用
+
+	return rgba, nil
+}
+
+// drawTextWithBasicFont 使用基础字体绘制文字
+func (i *Image) drawTextWithBasicFont(rgba *image.RGBA, textConfig *TextWatermarkConfig, config *WatermarkConfig, fontColor, strokeColor color.RGBA, hasStroke bool, face font.Face) (image.Image, error) {
+	bounds := rgba.Bounds()
+	fontSize := textConfig.FontSize
+	if fontSize < 12 {
+		fontSize = 12
+	}
+
 	// 计算文字尺寸
 	textWidth := font.MeasureString(face, textConfig.Text).Ceil()
 	textHeight := face.Metrics().Height.Ceil()
+	ascent := face.Metrics().Ascent.Ceil()
+	descent := face.Metrics().Descent.Ceil()
 
-	// 计算背景尺寸和位置（添加一些内边距）
-	padding := fontSize / 3
+	// 计算背景内边距
+	padding := textConfig.BgPadding
+	if padding <= 0 {
+		padding = fontSize / 3
+	}
+
+	// 计算水印图层尺寸
 	bgWidth := textWidth + padding*2
 	bgHeight := textHeight + padding*2
-	x, y := i.computeWatermarkPosition(bounds.Dx(), bounds.Dy(), bgWidth, bgHeight)
 
-	// 绘制背景
+	// 创建独立的水印图层
+	watermarkLayer := image.NewRGBA(image.Rect(0, 0, bgWidth, bgHeight))
+
+	// 在水印图层上绘制背景
+	i.drawBackgroundOnLayer(watermarkLayer, textConfig, config, 0, 0, bgWidth, bgHeight)
+
+	// 计算文字绘制位置（真正垂直居中）
+	textX := padding
+	textY := padding + ascent + (textHeight-ascent-descent)/2
+
+	// 绘制描边
+	if hasStroke {
+		strokeCol := color.NRGBA{
+			R: uint8(strokeColor.R),
+			G: uint8(strokeColor.G),
+			B: uint8(strokeColor.B),
+			A: uint8(config.Opacity * 255),
+		}
+		i.drawTextWithStroke(watermarkLayer, face, textConfig.Text, textX, textY, strokeCol, textConfig.StrokeWidth)
+	}
+
+	// 绘制文字
+	fgCol := color.NRGBA{
+		R: uint8(fontColor.R),
+		G: uint8(fontColor.G),
+		B: uint8(fontColor.B),
+		A: uint8(config.Opacity * 255),
+	}
+
+	drawer := font.Drawer{
+		Dst:  watermarkLayer,
+		Src:  image.NewUniform(fgCol),
+		Face: face,
+		Dot:  fixed.Point26_6{X: fixed.I(textX), Y: fixed.I(textY)},
+	}
+	drawer.DrawString(textConfig.Text)
+
+	// 应用旋转（如果有）
+	if textConfig.RotateAngle != 0 {
+		watermarkLayer = rotateImage(watermarkLayer, float64(textConfig.RotateAngle)).(*image.RGBA)
+	}
+
+	// 计算水印位置并绘制到原图
+	wmBounds := watermarkLayer.Bounds()
+	x, y := i.computeWatermarkPosition(bounds.Dx(), bounds.Dy(), wmBounds.Dx(), wmBounds.Dy())
+	i.applyWatermarkWithOpacity(rgba, watermarkLayer, x, y, 1.0)
+
+	return rgba, nil
+}
+
+// drawBackground 绘制背景（支持纯色和渐变）
+func (i *Image) drawBackground(rgba *image.RGBA, textConfig *TextWatermarkConfig, config *WatermarkConfig, x, y, width, height int) {
+	// 检查是否使用渐变背景
+	if textConfig.BgGradientStart != "" && textConfig.BgGradientEnd != "" {
+		startColor, err1 := parseHexColor(textConfig.BgGradientStart)
+		endColor, err2 := parseHexColor(textConfig.BgGradientEnd)
+		if err1 == nil && err2 == nil {
+			i.drawGradientBackground(rgba, x, y, width, height, textConfig.BgRadius, startColor, endColor, textConfig.BgGradientAngle, config.Opacity)
+			return
+		}
+	}
+
+	// 使用纯色背景
 	if textConfig.BgColor != "" {
 		bgColor, err := parseHexColor(textConfig.BgColor)
 		if err == nil {
@@ -502,23 +577,144 @@ func (i *Image) AddTextWatermark(img image.Image) (image.Image, error) {
 				B: bgColor.B,
 				A: uint8(config.Opacity * 255),
 			}
-			drawRoundedRect(rgba, x, y, bgWidth, bgHeight, textConfig.BgRadius, bgColorWithAlpha)
+			drawRoundedRect(rgba, x, y, width, height, textConfig.BgRadius, bgColorWithAlpha)
+		}
+	}
+}
+
+// drawBackgroundOnLayer 在独立图层上绘制背景（从原点开始）
+func (i *Image) drawBackgroundOnLayer(rgba *image.RGBA, textConfig *TextWatermarkConfig, config *WatermarkConfig, x, y, width, height int) {
+	// 检查是否使用渐变背景
+	if textConfig.BgGradientStart != "" && textConfig.BgGradientEnd != "" {
+		startColor, err1 := parseHexColor(textConfig.BgGradientStart)
+		endColor, err2 := parseHexColor(textConfig.BgGradientEnd)
+		if err1 == nil && err2 == nil {
+			i.drawGradientBackground(rgba, x, y, width, height, textConfig.BgRadius, startColor, endColor, textConfig.BgGradientAngle, 1.0)
+			return
 		}
 	}
 
-	// 绘制文字（在背景上垂直居中）
-	textX := x + padding
-	textY := y + padding + face.Metrics().Ascent.Ceil()
-
-	drawer := font.Drawer{
-		Dst:  rgba,
-		Src:  image.NewUniform(fgCol),
-		Face: face,
-		Dot:  fixed.Point26_6{X: fixed.I(textX), Y: fixed.I(textY)},
+	// 使用纯色背景
+	if textConfig.BgColor != "" {
+		bgColor, err := parseHexColor(textConfig.BgColor)
+		if err == nil {
+			bgColorWithAlpha := color.RGBA{
+				R: bgColor.R,
+				G: bgColor.G,
+				B: bgColor.B,
+				A: uint8(config.Opacity * 255),
+			}
+			drawRoundedRect(rgba, x, y, width, height, textConfig.BgRadius, bgColorWithAlpha)
+		}
 	}
-	drawer.DrawString(textConfig.Text)
+}
 
-	return rgba, nil
+// drawGradientBackground 绘制渐变背景
+func (i *Image) drawGradientBackground(rgba *image.RGBA, x, y, width, height, radius int, startColor, endColor color.RGBA, angle int, opacity float64) {
+	// 确保圆角半径有效
+	if radius < 0 {
+		radius = 0
+	}
+	if radius > width/2 {
+		radius = width / 2
+	}
+	if radius > height/2 {
+		radius = height / 2
+	}
+
+	// 计算渐变方向
+	// angle: 0=从左到右, 90=从上到下, 180=从右到左, 270=从下到上
+	angle = angle % 360
+	if angle < 0 {
+		angle += 360
+	}
+
+	// 遍历每个像素绘制渐变
+	for row := 0; row < height; row++ {
+		for col := 0; col < width; col++ {
+			// 检查是否在圆角矩形内
+			px, py := x+col, y+row
+			if !isInRoundedRect(col, row, width, height, radius) {
+				continue
+			}
+
+			// 计算渐变比例
+			var ratio float64
+			switch {
+			case angle >= 0 && angle < 45 || angle >= 315 && angle < 360:
+				// 从左到右
+				ratio = float64(col) / float64(width)
+			case angle >= 45 && angle < 135:
+				// 从上到下
+				ratio = float64(row) / float64(height)
+			case angle >= 135 && angle < 225:
+				// 从右到左
+				ratio = 1.0 - float64(col)/float64(width)
+			case angle >= 225 && angle < 315:
+				// 从下到上
+				ratio = 1.0 - float64(row)/float64(height)
+			}
+
+			// 插值计算颜色
+			r := uint8(float64(startColor.R)*(1-ratio) + float64(endColor.R)*ratio)
+			g := uint8(float64(startColor.G)*(1-ratio) + float64(endColor.G)*ratio)
+			b := uint8(float64(startColor.B)*(1-ratio) + float64(endColor.B)*ratio)
+			a := uint8(opacity * 255)
+
+			rgba.SetRGBA(px, py, color.RGBA{R: r, G: g, B: b, A: a})
+		}
+	}
+}
+
+// isInRoundedRect 检查点是否在圆角矩形内
+func isInRoundedRect(col, row, width, height, radius int) bool {
+	// 检查四个角落
+	// 左上角
+	if col < radius && row < radius {
+		dx := radius - col
+		dy := radius - row
+		return dx*dx+dy*dy <= radius*radius
+	}
+	// 右上角
+	if col >= width-radius && row < radius {
+		dx := col - (width - radius - 1)
+		dy := radius - row
+		return dx*dx+dy*dy <= radius*radius
+	}
+	// 左下角
+	if col < radius && row >= height-radius {
+		dx := radius - col
+		dy := row - (height - radius - 1)
+		return dx*dx+dy*dy <= radius*radius
+	}
+	// 右下角
+	if col >= width-radius && row >= height-radius {
+		dx := col - (width - radius - 1)
+		dy := row - (height - radius - 1)
+		return dx*dx+dy*dy <= radius*radius
+	}
+	// 中间区域
+	return true
+}
+
+// drawTextWithStroke 绘制带描边的文字
+func (i *Image) drawTextWithStroke(rgba *image.RGBA, face font.Face, text string, x, y int, strokeColor color.NRGBA, strokeWidth int) {
+	// 在文字周围绘制多层来模拟描边效果
+	offsets := []struct{ dx, dy int }{
+		{-strokeWidth, 0}, {strokeWidth, 0}, {0, -strokeWidth}, {0, strokeWidth},
+		{-strokeWidth, -strokeWidth}, {strokeWidth, -strokeWidth},
+		{-strokeWidth, strokeWidth}, {strokeWidth, strokeWidth},
+	}
+
+	for _, offset := range offsets {
+		drawer := font.Drawer{
+			Dst:  rgba,
+			Src:  image.NewUniform(strokeColor),
+			Face: face,
+			Dot:  fixed.Point26_6{X: fixed.I(x + offset.dx), Y: fixed.I(y + offset.dy)},
+		}
+		drawer.DrawString(text)
+	}
 }
 
 // AddImageWatermark 添加图片水印
@@ -547,6 +743,16 @@ func (i *Image) AddImageWatermark(img image.Image) (image.Image, error) {
 		wmHeight = int(float64(wmHeight) * imgConfig.ScaleRatio)
 		watermarkImg = resize.Resize(uint(wmWidth), uint(wmHeight), watermarkImg, resize.Lanczos3)
 	}
+
+	// 应用旋转（如果有）
+	if imgConfig.RotateAngle != 0 {
+		watermarkImg = rotateImage(watermarkImg, float64(imgConfig.RotateAngle))
+	}
+
+	// 更新旋转后的尺寸
+	wmBounds = watermarkImg.Bounds()
+	wmWidth = wmBounds.Dx()
+	wmHeight = wmBounds.Dy()
 
 	// 创建目标图片
 	bounds := img.Bounds()
@@ -701,4 +907,58 @@ func parseHexColor(hex string) (color.RGBA, error) {
 	}
 
 	return c, err
+}
+
+// rotateImage 旋转图片（顺时针方向，角度为度）
+func rotateImage(img image.Image, angle float64) image.Image {
+	if angle == 0 {
+		return img
+	}
+
+	// 将角度转换为弧度（顺时针旋转）
+	radians := -angle * math.Pi / 180.0
+
+	bounds := img.Bounds()
+	srcW := bounds.Dx()
+	srcH := bounds.Dy()
+
+	// 计算旋转后的图片尺寸
+	cos := math.Cos(radians)
+	sin := math.Sin(radians)
+	newW := int(math.Ceil(math.Abs(float64(srcW)*cos) + math.Abs(float64(srcH)*sin)))
+	newH := int(math.Ceil(math.Abs(float64(srcW)*sin) + math.Abs(float64(srcH)*cos)))
+
+	// 创建新图片
+	dst := image.NewRGBA(image.Rect(0, 0, newW, newH))
+
+	// 计算中心点
+	srcCX := float64(srcW) / 2.0
+	srcCY := float64(srcH) / 2.0
+	dstCX := float64(newW) / 2.0
+	dstCY := float64(newH) / 2.0
+
+	// 遍历目标图片的每个像素
+	for dy := 0; dy < newH; dy++ {
+		for dx := 0; dx < newW; dx++ {
+			// 计算源图片中的对应位置（逆变换）
+			px := float64(dx) - dstCX
+			py := float64(dy) - dstCY
+
+			// 逆旋转
+			sx := px*cos - py*sin + srcCX
+			sy := px*sin + py*cos + srcCY
+
+			// 双线性插值
+			if sx >= 0 && sx < float64(srcW) && sy >= 0 && sy < float64(srcH) {
+				// 简单的最近邻插值
+				sxInt := int(sx + 0.5)
+				syInt := int(sy + 0.5)
+				if sxInt >= 0 && sxInt < srcW && syInt >= 0 && syInt < srcH {
+					dst.Set(dx, dy, img.At(sxInt+bounds.Min.X, syInt+bounds.Min.Y))
+				}
+			}
+		}
+	}
+
+	return dst
 }
