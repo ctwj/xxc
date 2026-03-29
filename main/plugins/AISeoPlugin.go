@@ -17,10 +17,19 @@ import (
 )
 
 type AISeoPlugin struct {
+	AIType string `json:"ai_type"` // AI 类型: openai/nvidia/zhipu
 	ApiURL string `json:"api_url"` // API 地址（兼容 OpenAI 格式）
 	ApiKey string `json:"api_key"` // API 密钥
 	Model  string `json:"model"`   // 模型名称（如 gpt-4）
 	Enable bool   `json:"enable"`  // 是否启用
+
+	// 各功能独立开关
+	EnableTitleOptimize    bool `json:"enable_title_optimize"`    // 启用标题优化
+	EnableCategoryRecommend bool `json:"enable_category_recommend"` // 启用智能分类推荐
+	EnableKeywords        bool `json:"enable_keywords"`          // 启用关键词提取
+	EnableDescription     bool `json:"enable_description"`       // 启用描述优化
+	EnableRewrite         bool `json:"enable_rewrite"`           // 启用内容改写
+	EnableTags            bool `json:"enable_tags"`              // 启用标签生成
 
 	// 关键词配置
 	MinKeywords int `json:"min_keywords"`  // 最少关键词数（默认 4）
@@ -30,9 +39,6 @@ type AISeoPlugin struct {
 	// 标签配置
 	MinTags int `json:"min_tags"` // 最少标签数（默认 1）
 	MaxTags int `json:"max_tags"` // 最多标签数（默认 3）
-
-	// 内容改写
-	EnableRewrite bool `json:"enable_rewrite"` // 是否启用内容改写
 
 	// 自动发布
 	AutoPublish bool `json:"auto_publish"` // SEO 处理完成后自动发布文章
@@ -59,14 +65,24 @@ type AISeoPlugin struct {
 
 func NewAISeoPlugin() *AISeoPlugin {
 	return &AISeoPlugin{
-		Model:             "gpt-3.5-turbo",
-		Enable:            true,
+		AIType:                 "openai",
+		Model:                  "gpt-3.5-turbo",
+		Enable:                 true,
+		// 各功能开关默认值
+		EnableTitleOptimize:     true,  // 默认启用标题优化
+		EnableCategoryRecommend: false, // 默认不启用分类推荐
+		EnableKeywords:          true,  // 默认启用关键词提取
+		EnableDescription:       true,  // 默认启用描述优化
+		EnableRewrite:           false, // 默认不启用内容改写（消耗较多token）
+		EnableTags:              true,  // 默认启用标签生成
+		// 关键词配置
 		MinKeywords:       4,
 		MaxKeywords:       8,
 		MinLongTail:       2,
+		// 标签配置
 		MinTags:           1,
 		MaxTags:           3,
-		EnableRewrite:     true,
+		// 其他配置
 		AutoPublish:       false,
 		OtherCategoryName: "其他软件",
 		CronEnable:        false,
@@ -78,6 +94,49 @@ func NewAISeoPlugin() *AISeoPlugin {
 }
 
 // Info 返回插件信息
+// autoDetectAIType 根据 API URL 自动检测 AI 类型
+func (p *AISeoPlugin) autoDetectAIType() {
+	if p.ApiURL == "" {
+		return
+	}
+
+	// 如果 ai_type 已正确设置，则跳过
+	switch p.AIType {
+	case "nvidia", "zhipu", "openai":
+		// 检查是否与 URL 匹配
+		if p.isAITypeMatchURL(p.AIType, p.ApiURL) {
+			return
+		}
+	}
+
+	// 根据 URL 自动识别类型
+	urlLower := strings.ToLower(p.ApiURL)
+	switch {
+	case strings.Contains(urlLower, "nvidia"):
+		p.AIType = "nvidia"
+		p.ctx.Log.Info("Auto-detected AI type from URL", zap.String("ai_type", "nvidia"))
+	case strings.Contains(urlLower, "bigmodel") || strings.Contains(urlLower, "zhipu"):
+		p.AIType = "zhipu"
+		p.ctx.Log.Info("Auto-detected AI type from URL", zap.String("ai_type", "zhipu"))
+	default:
+		p.AIType = "openai"
+	}
+}
+
+// isAITypeMatchURL 检查 AI 类型是否与 URL 匹配
+func (p *AISeoPlugin) isAITypeMatchURL(aiType, apiURL string) bool {
+	urlLower := strings.ToLower(apiURL)
+	switch aiType {
+	case "nvidia":
+		return strings.Contains(urlLower, "nvidia")
+	case "zhipu":
+		return strings.Contains(urlLower, "bigmodel") || strings.Contains(urlLower, "zhipu")
+	case "openai":
+		return !strings.Contains(urlLower, "nvidia") && !strings.Contains(urlLower, "bigmodel")
+	}
+	return false
+}
+
 func (p *AISeoPlugin) Info() *pluginEntity.PluginInfo {
 	return &pluginEntity.PluginInfo{
 		ID:         "AISeoPlugin",
@@ -116,7 +175,11 @@ func (p *AISeoPlugin) Run(ctx *pluginEntity.Plugin) error {
 		return errors.New("API URL or API Key is not configured")
 	}
 
+	// 根据 API URL 自动修正 ai_type（防止配置不一致）
+	p.autoDetectAIType()
+
 	p.ctx.Log.Info("AISeoPlugin started",
+		zap.String("ai_type", p.AIType),
 		zap.String("api_url", p.ApiURL),
 		zap.String("model", p.Model),
 		zap.Int("article_id", p.ArticleID),
@@ -337,6 +400,7 @@ func (p *AISeoPlugin) processArticle(article *entity.Article) error {
 
 // AISeoResult SEO 生成结果
 type AISeoResult struct {
+	Title           string   `json:"title"`            // 优化后的标题
 	CategoryID      int      `json:"category_id"`
 	CategoryChanged bool     `json:"category_changed"`
 	Keywords        []string `json:"keywords"`
@@ -349,8 +413,22 @@ type AISeoResult struct {
 func (p *AISeoPlugin) generateSEOContent(article *entity.Article) (*AISeoResult, error) {
 	result := &AISeoResult{}
 
-	// 1. 智能分类推荐
-	if article.CategoryID == 0 || p.isOtherCategory(article.CategoryID) {
+	// 1. 标题优化（优先处理，因为后续关键词等依赖标题）
+	if p.EnableTitleOptimize {
+		title, err := p.optimizeTitle(article)
+		if err != nil {
+			p.ctx.Log.Warn("Failed to optimize title", zap.Error(err))
+		} else if title != "" {
+			result.Title = title
+			p.ctx.Log.Info("Title optimized",
+				zap.Int("article_id", article.ID),
+				zap.String("old_title", article.Title),
+				zap.String("new_title", title))
+		}
+	}
+
+	// 2. 智能分类推荐
+	if p.EnableCategoryRecommend && (article.CategoryID == 0 || p.isOtherCategory(article.CategoryID)) {
 		categoryID, err := p.recommendCategory(article)
 		if err != nil {
 			p.ctx.Log.Warn("Failed to recommend category", zap.Error(err))
@@ -363,35 +441,41 @@ func (p *AISeoPlugin) generateSEOContent(article *entity.Article) (*AISeoResult,
 		}
 	}
 
-	// 2. 关键词提取
-	keywords, err := p.extractKeywords(article)
-	if err != nil {
-		p.ctx.Log.Warn("Failed to extract keywords", zap.Error(err))
-	} else if len(keywords) > 0 {
-		result.Keywords = keywords
-		p.ctx.Log.Info("Keywords extracted",
-			zap.Int("article_id", article.ID),
-			zap.Int("count", len(keywords)),
-			zap.Strings("keywords", keywords))
-	} else {
-		p.ctx.Log.Warn("No keywords extracted",
-			zap.Int("article_id", article.ID))
+	// 3. 关键词提取
+	var keywords []string
+	if p.EnableKeywords {
+		var err error
+		keywords, err = p.extractKeywords(article)
+		if err != nil {
+			p.ctx.Log.Warn("Failed to extract keywords", zap.Error(err))
+		} else if len(keywords) > 0 {
+			result.Keywords = keywords
+			p.ctx.Log.Info("Keywords extracted",
+				zap.Int("article_id", article.ID),
+				zap.Int("count", len(keywords)),
+				zap.Strings("keywords", keywords))
+		} else {
+			p.ctx.Log.Warn("No keywords extracted",
+				zap.Int("article_id", article.ID))
+		}
 	}
 
-	// 3. 描述优化
-	description, err := p.optimizeDescription(article, result.Keywords)
-	if err != nil {
-		p.ctx.Log.Warn("Failed to optimize description", zap.Error(err))
-	} else if description != "" {
-		result.Description = description
-		p.ctx.Log.Info("Description optimized",
-			zap.Int("article_id", article.ID),
-			zap.String("description", description))
+	// 4. 描述优化
+	if p.EnableDescription {
+		description, err := p.optimizeDescription(article, keywords)
+		if err != nil {
+			p.ctx.Log.Warn("Failed to optimize description", zap.Error(err))
+		} else if description != "" {
+			result.Description = description
+			p.ctx.Log.Info("Description optimized",
+				zap.Int("article_id", article.ID),
+				zap.String("description", description))
+		}
 	}
 
-	// 4. 内容改写
+	// 5. 内容改写
 	if p.EnableRewrite {
-		content, err := p.rewriteContent(article, result.Keywords)
+		content, err := p.rewriteContent(article, keywords)
 		if err != nil {
 			p.ctx.Log.Warn("Failed to rewrite content", zap.Error(err))
 		} else if content != "" {
@@ -402,15 +486,17 @@ func (p *AISeoPlugin) generateSEOContent(article *entity.Article) (*AISeoResult,
 		}
 	}
 
-	// 5. 标签生成
-	tags, err := p.generateTags(article, result.Keywords)
-	if err != nil {
-		p.ctx.Log.Warn("Failed to generate tags", zap.Error(err))
-	} else if len(tags) > 0 {
-		result.Tags = tags
-		p.ctx.Log.Info("Tags generated",
-			zap.Int("article_id", article.ID),
-			zap.Strings("tags", tags))
+	// 6. 标签生成
+	if p.EnableTags {
+		tags, err := p.generateTags(article, keywords)
+		if err != nil {
+			p.ctx.Log.Warn("Failed to generate tags", zap.Error(err))
+		} else if len(tags) > 0 {
+			result.Tags = tags
+			p.ctx.Log.Info("Tags generated",
+				zap.Int("article_id", article.ID),
+				zap.Strings("tags", tags))
+		}
 	}
 
 	return result, nil
@@ -485,25 +571,95 @@ func (p *AISeoPlugin) recommendCategory(article *entity.Article) (int, error) {
 	return 0, nil
 }
 
+// optimizeTitle 优化标题
+func (p *AISeoPlugin) optimizeTitle(article *entity.Article) (string, error) {
+	p.ctx.Log.Debug("Starting title optimization",
+		zap.Int("article_id", article.ID),
+		zap.String("title", article.Title))
+
+	// 构建提示词
+	prompt := fmt.Sprintf(`你是一个专业的 SEO 标题优化专家。请对以下文章标题进行 SEO 优化，使其更具吸引力和搜索友好性。
+
+原标题：%s
+文章内容摘要：%s
+
+优化要求：
+1. 标题长度控制在 20-40 个字符之间（适合搜索引擎显示）
+2. 包含核心关键词，优先将重要关键词放在标题前部
+3. 使用数字、符号或情感词汇增加点击率（如【必备】、v5.0、2024最新等）
+4. 保持标题简洁有力，避免堆砌关键词
+5. 符合用户搜索习惯，针对目标用户群体
+6. 保留软件名称和版本号（如果有）
+7. 体现内容独特性和价值
+
+优化策略建议：
+- 软件类：软件名 + 版本号 + 核心功能 + 特色（如：便携版/绿色版/破解版）
+- 教程类：问题/需求 + 解决方案 + 效果/收益
+- 资讯类：核心事件 + 影响/意义 + 时间节点
+
+【重要】只输出优化后的标题文本，不要输出任何思考过程、分析步骤或解释说明。`,
+		article.Title,
+		truncateText(article.Content, 300),
+	)
+
+	// 调用 AI API
+	response, err := p.callAI(prompt)
+	if err != nil {
+		p.ctx.Log.Error("AI API call failed for title optimization",
+			zap.Int("article_id", article.ID),
+			zap.Error(err))
+		return "", err
+	}
+
+	// 清理响应
+	title := strings.TrimSpace(response)
+	// 移除可能的前后引号
+	title = strings.Trim(title, "\"'")
+
+	// 标题长度限制
+	runes := []rune(title)
+	if len(runes) > 60 {
+		title = string(runes[:60])
+	}
+
+	p.ctx.Log.Debug("Title optimization completed",
+		zap.Int("article_id", article.ID),
+		zap.String("new_title", title))
+
+	return title, nil
+}
+
 // extractKeywords 提取关键词
 func (p *AISeoPlugin) extractKeywords(article *entity.Article) ([]string, error) {
 	p.ctx.Log.Debug("Starting keyword extraction",
 		zap.Int("article_id", article.ID),
 		zap.String("title", article.Title))
 
-	// 构建提示词
-	prompt := fmt.Sprintf(`你是一个 SEO 关键词提取专家。请从以下文章中提取与内容高度相关、符合 SEO 优化原则的关键词。
+	// 构建提示词 - 优化 SEO 效果
+	prompt := fmt.Sprintf(`你是一个资深的 SEO 关键词策略专家。请从以下文章中提取高价值关键词，用于提升搜索引擎排名和流量。
 
 文章标题：%s
 文章内容：%s
 
-要求：
-- 提取的关键词总数在 %d 到 %d 个之间。
-- 其中至少 %d 个为长尾关键词（由 3-5 个词组成的短语）。
-- 其余为短关键词（由 1-2 个词组成）。
-- 关键词之间用英文逗号分隔。
-- 只返回关键词列表，不要包含任何其他文字或解释。
-- 如果无法满足数量要求，则尽可能接近，但不要强行填充不相关的关键词。`,
+关键词提取策略：
+1. 核心关键词（1-2个）：文章主题最核心的词汇，搜索量大、竞争度适中
+2. 长尾关键词（2-3个）：由3-5个词组成的具体短语，搜索意图明确，转化率高
+3. 相关关键词（1-3个）：与主题相关的热门搜索词，拓展覆盖面
+
+关键词选择原则：
+- 优先选择用户实际搜索的词汇，而非专业术语
+- 包含品牌词/产品名（如有）
+- 考虑用户搜索意图：下载、教程、对比、评测、解决问题等
+- 避免过于宽泛或过于生僻的词汇
+- 结合当前热点和时效性词汇
+
+数量要求：
+- 总数 %d 到 %d 个关键词
+- 其中至少 %d 个长尾关键词（3-5个词组成）
+- 关键词之间用英文逗号分隔
+
+【重要】只输出关键词列表，格式：关键词1, 关键词2, 关键词3, 关键词4
+不要输出任何思考过程、解释或额外文字。`,
 		article.Title,
 		truncateText(article.Content, 1000),
 		p.MinKeywords,
@@ -553,20 +709,34 @@ func (p *AISeoPlugin) optimizeDescription(article *entity.Article, keywords []st
 	p.ctx.Log.Debug("Starting description optimization",
 		zap.Int("article_id", article.ID))
 
-	// 构建提示词
+	// 构建提示词 - 优化 SEO 效果
 	keywordsStr := strings.Join(keywords, "、")
-	prompt := fmt.Sprintf(`你是一个 SEO 描述生成专家。请根据以下文章标题、内容和关键词，生成一个优化的 SEO 描述。
+	prompt := fmt.Sprintf(`你是一个专业的 SEO 元描述撰写专家。请为以下文章创作一个高质量的 Meta Description。
 
 文章标题：%s
-文章内容：%s
-关键词列表（用英文逗号分隔）：%s
+文章内容摘要：%s
+目标关键词：%s
 
-要求：
-- 描述长度不超过 250 个字符（包括标点）。
-- 自然地融入核心关键词，突出文章主题。
-- 描述应吸引用户点击，同时简洁明了地概括文章内容。
-- 避免关键词堆砌，保持语句通顺。
-- 只返回描述内容本身，不要包含任何其他文字。`,
+描述撰写要点：
+1. 长度控制：120-160 个字符最佳（最多不超过 200 字符），确保在搜索结果完整显示
+2. 关键词布局：将核心关键词放在描述前 50 个字符内，自然融入 1-2 个长尾关键词
+3. 用户吸引：
+   - 使用行动号召词（下载、查看、了解、获取）
+   - 突出独特价值（免费、最新、完整版、详细教程）
+   - 解决用户痛点或满足需求
+4. 内容准确：描述必须与文章内容高度相关，避免误导
+5. 语句流畅：避免关键词堆砌，保持自然通顺
+6. 差异化：体现文章与竞品的区别
+
+描述结构建议：
+- 开头：核心关键词 + 价值主张
+- 中间：核心功能/特点/优势
+- 结尾：行动号召或补充信息
+
+示例格式：
+【软件名】是一款专业的XXX工具，支持XXX功能，提供XXX特性。免费下载，帮助用户快速XXX。
+
+【重要】只输出描述文本，不要输出任何思考过程、解释或额外文字。`,
 		article.Title,
 		truncateText(article.Content, 500),
 		keywordsStr,
@@ -600,27 +770,52 @@ func (p *AISeoPlugin) rewriteContent(article *entity.Article, keywords []string)
 		zap.Int("article_id", article.ID),
 		zap.String("title", article.Title))
 
-	// 构建提示词
+	// 构建提示词 - 深度 SEO 优化
 	keywordsStr := strings.Join(keywords, "、")
-	prompt := fmt.Sprintf(`你是一个专业的 SEO 内容编辑和文案创作专家。请根据给定的关键词和文章主题，对以下文章进行深度改写、扩写和优化，以大幅提升搜索引擎优化效果。
+	prompt := fmt.Sprintf(`你是一个资深 SEO 内容策略专家。请对以下文章进行深度改写和 SEO 优化，提升搜索引擎排名和用户体验。
 
 文章标题：%s
-文章内容（可能包含 HTML 标签）：%s
-关键词列表（用英文逗号分隔）：%s
+文章内容：%s
+目标关键词：%s
 
-重要要求：
-1. **内容扩写**：在保持原文核心信息的基础上，大幅扩充内容长度（至少增加30%），增加更多细节、使用场景、注意事项等有价值的信息。
-2. **文案调整**：使用更具吸引力和专业性的语言，改善文章的可读性和专业性。
-3. **差异化改写**：确保改写后的内容与原文至少有 30% 以上的文字差异，避免雷同。
-4. **关键词优化**：在文中自然地融入所有提供的关键词，每个关键词至少出现 2-3 次，避免生硬堆砌。
-5. **HTML 结构保留**：严格保留原有的 HTML 标签格式（如 <p>、<h3>、<img> 等），只修改标签内的文本内容。
-6. **图片保留**：保留原文中的所有图片标签和属性不变。
-7. **内容丰富性**：增加更多实用的信息，如使用技巧、注意事项、常见问题等，使内容更加丰富和有价值。
-8. **语言风格**：使用更生动、专业、有吸引力的语言，提升文章质量和用户体验。
-9. **结构优化**：如果原文结构较简单，可以适当增加段落和小标题，使内容层次更清晰。
-10. **独特性**：确保改写后的内容具有独特性，避免与其他文章雷同。
+SEO 内容优化策略：
 
-只返回改写后的完整文章内容，不要添加任何其他文字说明。`,
+【内容结构优化】
+1. 开篇引导（前100字）：核心关键词前置，快速传达文章价值，吸引读者继续阅读
+2. 主体内容：
+   - 每个段落聚焦一个子主题，使用 <h3> 标签添加小标题
+   - 小标题中融入长尾关键词
+   - 内容层次清晰，便于扫读
+3. 内容扩展：增加 30%%-50%% 的深度内容
+   - 详细的功能说明和使用场景
+   - 实用技巧和最佳实践
+   - 常见问题解答
+   - 对比分析和选型建议
+
+【关键词布局】
+- 标题/小标题：自然融入核心关键词
+- 首段：核心关键词 + 1-2个长尾关键词
+- 正文中段：每个关键词出现 2-3 次
+- 结尾：核心关键词再次出现，强化主题
+
+【内容质量提升】
+- 专业性：使用准确的专业术语，提供有价值的信息
+- 可读性：段落简洁，句子流畅，避免长句
+- 独特性：提供独特见解或独家信息，避免千篇一律
+- 实用性：加入具体数据、案例、步骤说明
+
+【HTML 格式要求】
+- 保留所有原有 HTML 标签结构
+- 保留所有图片标签不变
+- 可添加新的 <h3> 小标题标签
+- 段落使用 <p> 标签
+
+【禁止事项】
+- 不要堆砌关键词
+- 不要复制原文内容
+- 不要添加无关内容
+
+【重要】直接输出改写后的完整文章（从第一个HTML标签开始），不要输出任何思考过程、解释或额外文字。`,
 		article.Title,
 		truncateText(article.Content, 2000),
 		keywordsStr,
@@ -647,20 +842,30 @@ func (p *AISeoPlugin) rewriteContent(article *entity.Article, keywords []string)
 
 // generateTags 生成标签
 func (p *AISeoPlugin) generateTags(article *entity.Article, keywords []string) ([]string, error) {
-	// 构建提示词
+	// 构建提示词 - 优化 SEO 效果
 	keywordsStr := strings.Join(keywords, "、")
-	prompt := fmt.Sprintf(`你是一个内容标签生成专家。请根据以下文章标题、内容和关键词，生成一组相关的标签。
+	prompt := fmt.Sprintf(`你是一个 SEO 标签策略专家。请为以下文章生成精准的内容标签。
 
 文章标题：%s
-文章内容：%s
-关键词列表（用英文逗号分隔）：%s
+文章内容摘要：%s
+已有关键词：%s
 
-要求：
-- 生成 %d 到 %d 个标签。
-- 标签应简洁明了，通常是 1-3 个词组成，便于分类和搜索。
-- 标签必须与文章内容高度相关，反映核心主题。
-- 使用英文逗号分隔标签。
-- 只返回标签列表，不要任何其他文字。`,
+标签生成策略：
+1. 分类标签：文章所属的内容分类（如：系统工具、图像处理、开发工具）
+2. 功能标签：文章涉及的核心功能（如：内存测试、数据恢复、格式转换）
+3. 特性标签：内容的突出特点（如：免费、便携版、中文版、免安装）
+4. 场景标签：适用使用场景（如：办公、设计、开发、学习）
+
+标签选择原则：
+- 标签应为常见分类词，便于用户筛选和搜索
+- 每个标签 1-4 个词，简洁明确
+- 避免过于细分的标签
+- 与文章内容高度相关
+
+数量要求：%d 到 %d 个标签
+
+【重要】只输出标签列表，格式：标签1, 标签2, 标签3
+不要输出任何思考过程、解释或额外文字。`,
 		article.Title,
 		truncateText(article.Content, 1000),
 		keywordsStr,
@@ -693,11 +898,23 @@ func (p *AISeoPlugin) generateTags(article *entity.Article, keywords []string) (
 
 // callAI 调用 AI API
 func (p *AISeoPlugin) callAI(prompt string) (string, error) {
-	if p.ApiURL == "" || p.ApiKey == "" {
-		return "", errors.New("API URL or API Key is not configured")
+	if p.ApiURL == "" {
+		return "", errors.New("API URL is not configured")
+	}
+	if p.ApiKey == "" {
+		return "", errors.New("API Key is not configured")
 	}
 
-	// 构建请求
+	// 记录 API Key 状态（不暴露具体值）
+	p.ctx.Log.Info("AI API call starting",
+		zap.String("ai_type", p.AIType),
+		zap.String("api_url", p.ApiURL),
+		zap.String("model", p.Model),
+		zap.Int("api_key_length", len(p.ApiKey)),
+		zap.String("api_key_prefix", safeKeyPrefix(p.ApiKey)),
+		zap.String("api_key_masked", maskAPIKey(p.ApiKey)))
+
+	// 构建基础请求
 	requestBody := map[string]interface{}{
 		"model": p.Model,
 		"messages": []map[string]string{
@@ -709,21 +926,179 @@ func (p *AISeoPlugin) callAI(prompt string) (string, error) {
 		"temperature": 0.7,
 	}
 
+	// 对于推理模型，添加停止词来截断思考过程
+	if p.isReasoningModel() {
+		requestBody["stop"] = []string{"\n\n\n", "最终答案：", "答案：", "---"}
+	}
+
+	// 注意：NVIDIA API 不支持 extra_body 参数
+	// 如果需要控制思考过程，需要使用其他方式（如不同的模型或 API 版本）
+	// 目前 NVIDIA API 完全兼容 OpenAI 格式，不需要额外参数
+
 	bodyBytes, err := json.Marshal(requestBody)
 	if err != nil {
+		p.ctx.Log.Error("Failed to marshal request body", zap.Error(err))
 		return "", err
 	}
 
-	// 调用 API
+	// 记录请求信息
+	apiURL := p.ApiURL + "/chat/completions"
+	p.ctx.Log.Info("AI API Request",
+		zap.String("ai_type", p.AIType),
+		zap.String("api_url", apiURL),
+		zap.String("model", p.Model),
+		zap.String("api_key_masked", maskAPIKey(p.ApiKey)),
+		zap.String("prompt_preview", truncateText(prompt, 200)),
+		zap.String("request_body", truncateText(string(bodyBytes), 500)))
+
+	// 调用 API（使用真实的 API Key，不是遮蔽后的）
 	respBody, err := request.New().
 		AddHeader("Authorization", "Bearer "+p.ApiKey).
 		AddHeader("Content-Type", "application/json").
-		PostReturnBody(p.ApiURL+"/chat/completions", bytes.NewReader(bodyBytes))
+		PostReturnBody(apiURL, bytes.NewReader(bodyBytes))
 	if err != nil {
+		p.ctx.Log.Error("AI API request failed",
+			zap.String("api_url", apiURL),
+			zap.Error(err))
 		return "", err
 	}
 
-	// 解析响应
+	// 记录原始响应
+	p.ctx.Log.Info("AI API Response",
+		zap.String("ai_type", p.AIType),
+		zap.Int("response_length", len(respBody)),
+		zap.String("response_body", truncateText(string(respBody), 1000)))
+
+	// 根据不同 AI 类型解析响应
+	switch p.AIType {
+	case "nvidia":
+		content, err := p.parseNVIDIAResponse(respBody)
+		if err != nil {
+			return "", err
+		}
+		// 对于推理模型，清理响应中的思考过程
+		if p.isReasoningModel() {
+			content = p.cleanReasoningResponse(content)
+		}
+		return content, nil
+	default:
+		content, err := p.parseOpenAIResponse(respBody)
+		if err != nil {
+			return "", err
+		}
+		// 对于推理模型，清理响应中的思考过程
+		if p.isReasoningModel() {
+			content = p.cleanReasoningResponse(content)
+		}
+		return content, nil
+	}
+}
+
+// isReasoningModel 判断是否为推理模型
+func (p *AISeoPlugin) isReasoningModel() bool {
+	modelLower := strings.ToLower(p.Model)
+	reasoningModels := []string{"qwq", "qwen-qwq", "deepseek-r1", "o1", "o3"}
+	for _, rm := range reasoningModels {
+		if strings.Contains(modelLower, rm) {
+			return true
+		}
+	}
+	return false
+}
+
+// cleanReasoningResponse 清理推理模型的响应，提取最终结果
+func (p *AISeoPlugin) cleanReasoningResponse(content string) string {
+	// 推理模型可能会在开头输出思考过程
+	// 常见模式：
+	// 1. 以"好的，我现在需要..."开头
+	// 2. 包含"首先，我需要..."、"接下来..."等
+	// 3. 最终答案在最后
+
+	// 如果内容很短，直接返回
+	if len(content) < 100 {
+		return content
+	}
+
+	// 检查是否包含思考过程的特征
+	thinkingPatterns := []string{
+		"好的，我现在需要",
+		"首先，我需要",
+		"让我分析",
+		"我来思考",
+	}
+
+	hasThinking := false
+	for _, pattern := range thinkingPatterns {
+		if strings.Contains(content, pattern) {
+			hasThinking = true
+			break
+		}
+	}
+
+	if !hasThinking {
+		return content
+	}
+
+	// 尝试提取最终结果
+	// 策略1：查找最后一个完整的结果段落
+	paragraphs := strings.Split(content, "\n\n")
+	if len(paragraphs) > 1 {
+		// 从后往前找，找到第一个看起来像结果的段落
+		for i := len(paragraphs) - 1; i >= 0; i-- {
+			para := strings.TrimSpace(paragraphs[i])
+			// 跳过空段落和思考过程特征
+			if para == "" {
+				continue
+			}
+			isThinking := false
+			for _, pattern := range thinkingPatterns {
+				if strings.Contains(para, pattern) {
+					isThinking = true
+					break
+				}
+			}
+			if !isThinking && len(para) > 10 {
+				return para
+			}
+		}
+	}
+
+	// 策略2：查找关键词列表模式（如 "关键词1, 关键词2, 关键词3"）
+	// 匹配逗号分隔的列表
+	lines := strings.Split(content, "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		// 如果一行包含多个逗号分隔的词，可能是结果
+		parts := strings.Split(line, ",")
+		if len(parts) >= 3 {
+			// 检查是否每个部分都是短词（关键词特征）
+			allShort := true
+			for _, part := range parts {
+				part = strings.TrimSpace(part)
+				if len(part) > 30 || len(part) < 2 {
+					allShort = false
+					break
+				}
+			}
+			if allShort {
+				return line
+			}
+		}
+	}
+
+	// 策略3：返回最后一段非空内容
+	for i := len(paragraphs) - 1; i >= 0; i-- {
+		para := strings.TrimSpace(paragraphs[i])
+		if len(para) > 10 {
+			return para
+		}
+	}
+
+	return content
+}
+
+// parseOpenAIResponse 解析 OpenAI 兼容格式的响应
+func (p *AISeoPlugin) parseOpenAIResponse(respBody []byte) (string, error) {
 	var resp struct {
 		Choices []struct {
 			Message struct {
@@ -732,30 +1107,158 @@ func (p *AISeoPlugin) callAI(prompt string) (string, error) {
 		} `json:"choices"`
 		Error *struct {
 			Message string `json:"message"`
+			Type    string `json:"type"`
+			Code    string `json:"code"`
 		} `json:"error"`
+		Usage *struct {
+			PromptTokens     int `json:"prompt_tokens"`
+			CompletionTokens int `json:"completion_tokens"`
+			TotalTokens      int `json:"total_tokens"`
+		} `json:"usage"`
 	}
 
 	if err := json.Unmarshal(respBody, &resp); err != nil {
+		p.ctx.Log.Error("Failed to parse OpenAI response",
+			zap.String("response_body", truncateText(string(respBody), 500)),
+			zap.Error(err))
 		return "", err
 	}
 
+	// 记录 usage 信息
+	if resp.Usage != nil {
+		p.ctx.Log.Info("OpenAI API Usage",
+			zap.Int("prompt_tokens", resp.Usage.PromptTokens),
+			zap.Int("completion_tokens", resp.Usage.CompletionTokens),
+			zap.Int("total_tokens", resp.Usage.TotalTokens))
+	}
+
 	if resp.Error != nil {
+		p.ctx.Log.Error("OpenAI API returned error",
+			zap.String("error_type", resp.Error.Type),
+			zap.String("error_code", resp.Error.Code),
+			zap.String("error_message", resp.Error.Message))
 		return "", errors.New(resp.Error.Message)
 	}
 
 	if len(resp.Choices) == 0 {
+		p.ctx.Log.Error("OpenAI API returned no choices",
+			zap.String("response_body", truncateText(string(respBody), 500)))
 		return "", errors.New("no response from AI")
 	}
 
-	return strings.TrimSpace(resp.Choices[0].Message.Content), nil
+	content := strings.TrimSpace(resp.Choices[0].Message.Content)
+	p.ctx.Log.Info("OpenAI response parsed successfully",
+		zap.Int("content_length", len(content)),
+		zap.String("content_preview", truncateText(content, 200)))
+
+	return content, nil
+}
+
+// parseNVIDIAResponse 解析 NVIDIA 响应（处理 reasoning_content 思考过程）
+func (p *AISeoPlugin) parseNVIDIAResponse(respBody []byte) (string, error) {
+	// 首先检查是否是错误响应（NVIDIA 错误格式可能不同）
+	var errorCheck map[string]interface{}
+	if err := json.Unmarshal(respBody, &errorCheck); err == nil {
+		if errMsg, ok := errorCheck["error"]; ok {
+			// NVIDIA 返回的错误可能是字符串或对象
+			switch v := errMsg.(type) {
+			case string:
+				p.ctx.Log.Error("NVIDIA API returned error", zap.String("error", v))
+				return "", errors.New("NVIDIA API error: " + v)
+			case map[string]interface{}:
+				if msg, ok := v["message"].(string); ok {
+					p.ctx.Log.Error("NVIDIA API returned error",
+						zap.Any("error_details", v))
+					return "", errors.New("NVIDIA API error: " + msg)
+				}
+			default:
+				p.ctx.Log.Error("NVIDIA API returned unknown error format",
+					zap.Any("error", errMsg))
+				return "", errors.New("NVIDIA API returned error")
+			}
+		}
+	}
+
+	var resp struct {
+		Choices []struct {
+			Message struct {
+				Content          string `json:"content"`
+				ReasoningContent string `json:"reasoning_content"` // NVIDIA 思考过程
+			} `json:"message"`
+		} `json:"choices"`
+		Usage *struct {
+			PromptTokens     int `json:"prompt_tokens"`
+			CompletionTokens int `json:"completion_tokens"`
+			TotalTokens      int `json:"total_tokens"`
+		} `json:"usage"`
+	}
+
+	if err := json.Unmarshal(respBody, &resp); err != nil {
+		p.ctx.Log.Error("Failed to parse NVIDIA response",
+			zap.String("response_body", truncateText(string(respBody), 500)),
+			zap.Error(err))
+		return "", err
+	}
+
+	// 记录 usage 信息
+	if resp.Usage != nil {
+		p.ctx.Log.Info("NVIDIA API Usage",
+			zap.Int("prompt_tokens", resp.Usage.PromptTokens),
+			zap.Int("completion_tokens", resp.Usage.CompletionTokens),
+			zap.Int("total_tokens", resp.Usage.TotalTokens))
+	}
+
+	if len(resp.Choices) == 0 {
+		p.ctx.Log.Error("NVIDIA API returned no choices",
+			zap.String("response_body", truncateText(string(respBody), 500)))
+		return "", errors.New("no response from AI")
+	}
+
+	// 记录思考过程（如果有）
+	reasoningLen := len(resp.Choices[0].Message.ReasoningContent)
+	contentLen := len(resp.Choices[0].Message.Content)
+	
+	p.ctx.Log.Info("NVIDIA response details",
+		zap.Int("reasoning_length", reasoningLen),
+		zap.Int("content_length", contentLen),
+		zap.String("reasoning_preview", truncateText(resp.Choices[0].Message.ReasoningContent, 300)),
+		zap.String("content_preview", truncateText(resp.Choices[0].Message.Content, 200)))
+
+	// 如果有思考过程，记录到日志（调试用）
+	if reasoningLen > 0 {
+		p.ctx.Log.Debug("NVIDIA reasoning content (will be filtered)",
+			zap.Int("reasoning_length", reasoningLen))
+	}
+
+	// 返回实际内容（过滤思考过程）
+	content := resp.Choices[0].Message.Content
+
+	// 如果内容为空但思考过程不为空，可能需要使用思考过程（根据实际情况调整）
+	if content == "" && resp.Choices[0].Message.ReasoningContent != "" {
+		p.ctx.Log.Warn("NVIDIA returned empty content, using reasoning as fallback")
+		content = resp.Choices[0].Message.ReasoningContent
+	}
+
+	return strings.TrimSpace(content), nil
 }
 
 // updateArticle 更新文章字段
 func (p *AISeoPlugin) updateArticle(article *entity.Article, result *AISeoResult) {
 	p.ctx.Log.Debug("Updating article fields",
 		zap.Int("article_id", article.ID),
+		zap.String("old_title", article.Title),
 		zap.String("old_keywords", article.Keywords),
 		zap.String("old_description", article.Description))
+
+	// 更新标题
+	if result.Title != "" && result.Title != article.Title {
+		oldTitle := article.Title
+		article.Title = result.Title
+		p.ctx.Log.Info("Title updated",
+			zap.Int("article_id", article.ID),
+			zap.String("old_title", oldTitle),
+			zap.String("new_title", article.Title))
+	}
 
 	// 更新分类
 	if result.CategoryID > 0 {
@@ -854,4 +1357,21 @@ func truncateText(text string, maxLen int) string {
 		return text
 	}
 	return string(runes[:maxLen])
+}
+
+// maskAPIKey 遮蔽 API Key，只显示前后几位
+func maskAPIKey(key string) string {
+	if len(key) <= 8 {
+		return "****"
+	}
+	// 显示前4位和后4位，中间用****代替
+	return key[:4] + "****" + key[len(key)-4:]
+}
+
+// safeKeyPrefix 安全地获取 API Key 前缀（用于诊断）
+func safeKeyPrefix(key string) string {
+	if len(key) < 4 {
+		return "[too short]"
+	}
+	return key[:4] + "..."
 }
