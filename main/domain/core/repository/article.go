@@ -327,3 +327,76 @@ func (r *ArticleRepo) EnableArticle(id int) error {
 func (r *ArticleRepo) DisableArticle(id int) error {
 	return db.DB.Model(&entity.ArticleBase{}).Where("id = ?", id).UpdateColumn("status", false).Error
 }
+
+// ListUngeneratedArticles 获取未生成 SEO 内容的文章列表
+// skipPublished: 是否跳过已发布文章
+// forceRegenerate: 是否强制重新生成（忽略已生成标记）
+func (r *ArticleRepo) ListUngeneratedArticles(limit int, skipPublished, forceRegenerate bool) (res []*entity.Article, err error) {
+	err = db.DB.Transaction(func(tx *gorm.DB) error {
+		// 构建基础查询
+		query := tx.Model(&entity.ArticleBase{}).
+			Select("article.*, article_detail.*").
+			Joins("LEFT JOIN article_detail ON article.id = article_detail.article_id")
+
+		// 跳过已发布文章
+		if skipPublished {
+			query = query.Where("article.status = ?", false)
+		}
+
+		// 非强制重新生成时，过滤已生成的文章
+		// extends 是 JSON 字段，存储格式为: [{"key":"ai_seo_generated","value":true}]
+		// 需要查询 extends 中不包含 ai_seo_generated 或其值为 false 的文章
+		if !forceRegenerate {
+			// 使用 JSON 函数检查 ai_seo_generated 不存在或为 false
+			// 兼容 SQLite/MySQL/PostgreSQL
+			query = query.Where(
+				"article_detail.extends IS NULL OR article_detail.extends = '' OR "+
+					"article_detail.extends NOT LIKE '%ai_seo_generated%' OR "+
+					"article_detail.extends LIKE '%\"ai_seo_generated\"%' AND article_detail.extends LIKE '%\"value\":false%'",
+			)
+		}
+
+		// 按ID升序排列，获取指定数量
+		var articleBases []entity.ArticleBase
+		var articleDetails []entity.ArticleDetail
+
+		if err := query.Order("article.id ASC").Limit(limit).Find(&articleBases).Error; err != nil {
+			return err
+		}
+
+		if len(articleBases) == 0 {
+			return nil
+		}
+
+		// 收集文章ID
+		articleIDs := make([]int, len(articleBases))
+		for i, base := range articleBases {
+			articleIDs[i] = base.ID
+		}
+
+		// 查询详情
+		if err := tx.Model(&entity.ArticleDetail{}).
+			Where("article_id IN ?", articleIDs).
+			Find(&articleDetails).Error; err != nil {
+			return err
+		}
+
+		// 组装结果
+		detailMap := make(map[int]entity.ArticleDetail)
+		for _, detail := range articleDetails {
+			detailMap[detail.ArticleID] = detail
+		}
+
+		res = make([]*entity.Article, len(articleBases))
+		for i, base := range articleBases {
+			article := &entity.Article{ArticleBase: base}
+			if detail, ok := detailMap[base.ID]; ok {
+				article.ArticleDetail = detail
+			}
+			res[i] = article
+		}
+
+		return nil
+	})
+	return
+}

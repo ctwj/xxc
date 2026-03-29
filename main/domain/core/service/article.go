@@ -411,3 +411,10 @@ func (s *ArticleService) EnableArticle(id int) error {
 func (s *ArticleService) DisableArticle(id int) error {
 	return repository.Article.DisableArticle(id)
 }
+
+// ListUngeneratedArticles 获取未生成 SEO 内容的文章列表
+// skipPublished: 是否跳过已发布文章
+// forceRegenerate: 是否强制重新生成（忽略已生成标记）
+func (s *ArticleService) ListUngeneratedArticles(limit int, skipPublished, forceRegenerate bool) (res []*entity.Article, err error) {
+	return repository.Article.ListUngeneratedArticles(limit, skipPublished, forceRegenerate)
+}
