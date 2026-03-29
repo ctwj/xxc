@@ -321,31 +321,37 @@ func (g *GnDownSpider) fetchArticle(articleURL string) (*entity.Article, error) 
 	// 提取发布时间
 	article.CreateTime = g.extractTime(doc)
 
-	// 获取分类ID
-	categoryName := g.extractCategory(doc)
-	g.ctx.Log.Info("提取到分类名称", zap.String("category", categoryName))
+	// 如果没有提取到下载链接，将分类ID设为19
+	if len(downloadLinks) == 0 {
+		article.CategoryID = 19
+		g.ctx.Log.Warn("未提取到下载链接，使用指定分类ID", zap.Int("category_id", 19))
+	} else {
+		// 获取分类ID
+		categoryName := g.extractCategory(doc)
+		g.ctx.Log.Info("提取到分类名称", zap.String("category", categoryName))
 
-	if categoryName != "" {
-		// 尝试精确匹配系统分类
-		if cat, err := service.Category.GetByName(categoryName); err == nil && cat.ID > 0 {
-			article.CategoryID = cat.ID
-			g.ctx.Log.Info("分类匹配成功", zap.String("category", categoryName), zap.Int("category_id", cat.ID))
+		if categoryName != "" {
+			// 尝试精确匹配系统分类
+			if cat, err := service.Category.GetByName(categoryName); err == nil && cat.ID > 0 {
+				article.CategoryID = cat.ID
+				g.ctx.Log.Info("分类匹配成功", zap.String("category", categoryName), zap.Int("category_id", cat.ID))
+			} else {
+				g.ctx.Log.Warn("分类匹配失败，使用默认分类", zap.String("category", categoryName), zap.Error(err))
+				// 匹配失败，使用默认分类 "其他软件"
+				if defaultCat, err := service.Category.GetByName("其他软件"); err == nil && defaultCat.ID > 0 {
+					article.CategoryID = defaultCat.ID
+					g.ctx.Log.Info("使用默认分类", zap.String("default_category", "其他软件"), zap.Int("category_id", defaultCat.ID))
+				} else {
+					g.ctx.Log.Error("默认分类也找不到", zap.Error(err))
+				}
+			}
 		} else {
-			g.ctx.Log.Warn("分类匹配失败，使用默认分类", zap.String("category", categoryName), zap.Error(err))
-			// 匹配失败，使用默认分类 "其他软件"
+			g.ctx.Log.Warn("未提取到分类名称，使用默认分类")
+			// 未提取到分类，也使用默认分类
 			if defaultCat, err := service.Category.GetByName("其他软件"); err == nil && defaultCat.ID > 0 {
 				article.CategoryID = defaultCat.ID
 				g.ctx.Log.Info("使用默认分类", zap.String("default_category", "其他软件"), zap.Int("category_id", defaultCat.ID))
-			} else {
-				g.ctx.Log.Error("默认分类也找不到", zap.Error(err))
 			}
-		}
-	} else {
-		g.ctx.Log.Warn("未提取到分类名称，使用默认分类")
-		// 未提取到分类，也使用默认分类
-		if defaultCat, err := service.Category.GetByName("其他软件"); err == nil && defaultCat.ID > 0 {
-			article.CategoryID = defaultCat.ID
-			g.ctx.Log.Info("使用默认分类", zap.String("default_category", "其他软件"), zap.Int("category_id", defaultCat.ID))
 		}
 	}
 
