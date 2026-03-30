@@ -5,6 +5,27 @@
 
   <a-tabs type="line" default-active-key="functions">
     <a-tab-pane key="functions" title="功能开关">
+      <!-- 整合模式 -->
+      <div class="mb-3 p-3 bg-blue-50 rounded-lg border border-blue-100">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <span class="text-sm font-medium text-blue-700">整合模式</span>
+            <a-tooltip content="开启后，将所有启用的功能合并为一个 AI 请求，大幅减少 API 调用次数">
+              <icon-question-circle class="text-blue-400 text-xs" />
+            </a-tooltip>
+          </div>
+          <a-switch type="round" v-model="data.enable_integrated_mode" size="small" />
+        </div>
+        <div class="text-xs text-blue-500 mt-1">
+          <template v-if="data.enable_integrated_mode">
+            已启用：一次请求处理所有功能，节省 Token
+          </template>
+          <template v-else>
+            已关闭：逐个功能调用 AI，处理更精细
+          </template>
+        </div>
+      </div>
+
       <!-- 核心优化 - 紧凑网格布局 -->
       <div class="mb-3">
         <div class="text-xs text-gray-500 mb-2">核心优化（推荐全开）</div>

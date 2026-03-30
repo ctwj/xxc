@@ -61,6 +61,9 @@ type AISeoPlugin struct {
 	EnableRewrite         bool `json:"enable_rewrite"`           // 启用内容改写
 	EnableTags            bool `json:"enable_tags"`              // 启用标签生成
 
+	// 整合模式开关
+	EnableIntegratedMode  bool `json:"enable_integrated_mode"`   // 启用整合模式（将多个功能合并到一个 AI 请求中）
+
 	// 关键词配置
 	MinKeywords int `json:"min_keywords"`  // 最少关键词数（默认 4）
 	MaxKeywords int `json:"max_keywords"`  // 最多关键词数（默认 8）
@@ -107,6 +110,8 @@ func NewAISeoPlugin() *AISeoPlugin {
 		EnableDescription:       true,  // 默认启用描述优化
 		EnableRewrite:           false, // 默认不启用内容改写（消耗较多token）
 		EnableTags:              true,  // 默认启用标签生成
+		// 整合模式默认关闭，保持向后兼容
+		EnableIntegratedMode: false, // 默认不启用整合模式
 		// 关键词配置
 		MinKeywords:       4,
 		MaxKeywords:       8,
@@ -588,6 +593,64 @@ type AISeoResult struct {
 	Tags            []string `json:"tags"`
 }
 
+// IntegratedResponse 整合模式 AI 响应结构
+type IntegratedResponse struct {
+	Title       string `json:"title"`       // 优化后的标题
+	Category    string `json:"category"`    // 推荐的分类名称
+	Keywords    string `json:"keywords"`    // 关键词（逗号分隔）
+	Description string `json:"description"` // 优化后的描述
+	Content     string `json:"content"`     // 改写后的内容
+	Tags        string `json:"tags"`        // 标签（逗号分隔）
+}
+
+// parseIntegratedResponse 解析整合模式的 JSON 响应
+func (p *AISeoPlugin) parseIntegratedResponse(content string) (*IntegratedResponse, error) {
+	// 清理推理模型的思考过程
+	if p.isReasoningModelForConfig(p.Model) {
+		content = p.cleanReasoningResponse(content)
+	}
+
+	// 提取 JSON 部分
+	// 查找第一个 { 和最后一个 }
+	startIdx := strings.Index(content, "{")
+	endIdx := strings.LastIndex(content, "}")
+	if startIdx == -1 || endIdx == -1 || endIdx < startIdx {
+		p.ctx.Log.Error("No valid JSON found in response",
+			zap.String("content_preview", truncateText(content, 500)))
+		return nil, errors.New("no valid JSON found in response")
+	}
+
+	jsonStr := content[startIdx : endIdx+1]
+	p.ctx.Log.Debug("Extracted JSON string",
+		zap.String("json_preview", truncateText(jsonStr, 500)))
+
+	var resp IntegratedResponse
+	if err := json.Unmarshal([]byte(jsonStr), &resp); err != nil {
+		p.ctx.Log.Error("Failed to parse integrated response JSON",
+			zap.String("json_str", truncateText(jsonStr, 500)),
+			zap.Error(err))
+		return nil, fmt.Errorf("failed to parse JSON: %w", err)
+	}
+
+	// 清理各字段的空白字符
+	resp.Title = strings.TrimSpace(resp.Title)
+	resp.Category = strings.TrimSpace(resp.Category)
+	resp.Keywords = strings.TrimSpace(resp.Keywords)
+	resp.Description = strings.TrimSpace(resp.Description)
+	resp.Content = strings.TrimSpace(resp.Content)
+	resp.Tags = strings.TrimSpace(resp.Tags)
+
+	p.ctx.Log.Info("Integrated response parsed successfully",
+		zap.String("title", resp.Title),
+		zap.String("category", resp.Category),
+		zap.String("keywords", resp.Keywords),
+		zap.Int("description_length", len(resp.Description)),
+		zap.Int("content_length", len(resp.Content)),
+		zap.String("tags", resp.Tags))
+
+	return &resp, nil
+}
+
 // generateSEOContent 生成 SEO 内容
 func (p *AISeoPlugin) generateSEOContent(article *entity.Article) (*AISeoResult, error) {
 	result := &AISeoResult{}
@@ -681,8 +744,331 @@ func (p *AISeoPlugin) generateSEOContent(article *entity.Article) (*AISeoResult,
 	return result, nil
 }
 
+// buildIntegratedPrompt 构建整合模式的提示词
+func (p *AISeoPlugin) buildIntegratedPrompt(article *entity.Article, categoryList string) string {
+	var promptBuilder strings.Builder
+
+	promptBuilder.WriteString("你是一个专业的 SEO 优化专家。请对以下文章进行全面的 SEO 优化处理。\n\n")
+	promptBuilder.WriteString(fmt.Sprintf("文章标题：%s\n", article.Title))
+	promptBuilder.WriteString(fmt.Sprintf("文章内容：\n%s\n\n", truncateText(article.Content, 2000)))
+
+	if p.EnableCategoryRecommend && categoryList != "" {
+		promptBuilder.WriteString(fmt.Sprintf("可选分类列表：\n%s\n\n", categoryList))
+	}
+
+	// 构建需要返回的字段说明
+	promptBuilder.WriteString("请根据以下启用的功能，返回 JSON 格式的结果：\n```json\n{\n")
+
+	fields := []string{}
+	requirements := []string{}
+
+	if p.EnableTitleOptimize {
+		fields = append(fields, `  "title": "优化后的标题"`)
+		requirements = append(requirements, `
+【标题优化要求】
+1. 标题长度控制在 20-40 个字符之间（适合搜索引擎显示）
+2. 包含核心关键词，优先将重要关键词放在标题前部
+3. 使用数字、符号或情感词汇增加点击率（如【必备】、v5.0、2024最新等）
+4. 保持标题简洁有力，避免堆砌关键词
+5. 符合用户搜索习惯，针对目标用户群体
+6. 保留软件名称和版本号（如果有）
+7. 体现内容独特性和价值
+
+优化策略建议：
+- 软件类：软件名 + 版本号 + 核心功能 + 特色（如：便携版/绿色版/破解版）
+- 教程类：问题/需求 + 解决方案 + 效果/收益
+- 资讯类：核心事件 + 影响/意义 + 时间节点`)
+	}
+
+	if p.EnableCategoryRecommend && categoryList != "" {
+		fields = append(fields, `  "category": "推荐的分类名称"`)
+		requirements = append(requirements, `
+【分类推荐要求】
+- 必须严格从可选分类列表中选择一个最合适的分类
+- 如果没有任何分类适合，返回空字符串
+- 不要返回列表之外的分类名称`)
+	}
+
+	if p.EnableKeywords {
+		fields = append(fields, fmt.Sprintf(`  "keywords": "关键词1, 关键词2, 关键词3"`, p.MinKeywords, p.MaxKeywords, p.MinLongTail))
+		requirements = append(requirements, fmt.Sprintf(`
+【关键词提取要求】
+关键词提取策略：
+1. 核心关键词（1-2个）：文章主题最核心的词汇，搜索量大、竞争度适中
+2. 长尾关键词（2-3个）：由3-5个词组成的具体短语，搜索意图明确，转化率高
+3. 相关关键词（1-3个）：与主题相关的热门搜索词，拓展覆盖面
+
+关键词选择原则：
+- 优先选择用户实际搜索的词汇，而非专业术语
+- 包含品牌词/产品名（如有）
+- 考虑用户搜索意图：下载、教程、对比、评测、解决问题等
+- 避免过于宽泛或过于生僻的词汇
+- 结合当前热点和时效性词汇
+
+数量要求：
+- 总数 %d 到 %d 个关键词
+- 其中至少 %d 个长尾关键词（3-5个词组成）
+- 关键词之间用英文逗号分隔`, p.MinKeywords, p.MaxKeywords, p.MinLongTail))
+	}
+
+	if p.EnableDescription {
+		fields = append(fields, `  "description": "优化后的描述"`)
+		requirements = append(requirements, `
+【描述优化要求】
+1. 长度控制：120-160 个字符最佳（最多不超过 200 字符），确保在搜索结果完整显示
+2. 关键词布局：将核心关键词放在描述前 50 个字符内，自然融入 1-2 个长尾关键词
+3. 用户吸引：
+   - 使用行动号召词（下载、查看、了解、获取）
+   - 突出独特价值（免费、最新、完整版、详细教程）
+   - 解决用户痛点或满足需求
+4. 内容准确：描述必须与文章内容高度相关，避免误导
+5. 语句流畅：避免关键词堆砌，保持自然通顺
+6. 差异化：体现文章与竞品的区别
+
+描述结构建议：
+- 开头：核心关键词 + 价值主张
+- 中间：核心功能/特点/优势
+- 结尾：行动号召或补充信息
+
+示例格式：
+【软件名】是一款专业的XXX工具，支持XXX功能，提供XXX特性。免费下载，帮助用户快速XXX。`)
+	}
+
+	if p.EnableRewrite {
+		fields = append(fields, `  "content": "改写后的完整文章内容"`)
+		requirements = append(requirements, `
+【内容改写要求】
+SEO 内容优化策略：
+
+【内容结构优化】
+1. 开篇引导（前100字）：核心关键词前置，快速传达文章价值，吸引读者继续阅读
+2. 主体内容：
+   - 每个段落聚焦一个子主题，使用 <h3> 标签添加小标题
+   - 小标题中融入长尾关键词
+   - 内容层次清晰，便于扫读
+3. 内容扩展：增加 30%%-50%% 的深度内容
+   - 详细的功能说明和使用场景
+   - 实用技巧和最佳实践
+   - 常见问题解答
+   - 对比分析和选型建议
+
+【关键词布局】
+- 标题/小标题：自然融入核心关键词
+- 首段：核心关键词 + 1-2个长尾关键词
+- 正文中段：每个关键词出现 2-3 次
+- 结尾：核心关键词再次出现，强化主题
+
+【内容质量提升】
+- 专业性：使用准确的专业术语，提供有价值的信息
+- 可读性：段落简洁，句子流畅，避免长句
+- 独特性：提供独特见解或独家信息，避免千篇一律
+- 实用性：加入具体数据、案例、步骤说明
+
+【HTML 格式要求】
+- 保留所有原有 HTML 标签结构
+- 保留所有图片标签不变
+- 可添加新的 <h3> 小标题标签
+- 段落使用 <p> 标签
+
+【禁止事项】
+- 不要堆砌关键词
+- 不要复制原文内容
+- 不要添加无关内容`)
+	}
+
+	if p.EnableTags {
+		fields = append(fields, fmt.Sprintf(`  "tags": "标签1, 标签2, 标签3"`, p.MinTags, p.MaxTags))
+		requirements = append(requirements, fmt.Sprintf(`
+【标签生成要求】
+标签生成策略：
+1. 分类标签：文章所属的内容分类（如：系统工具、图像处理、开发工具）
+2. 功能标签：文章涉及的核心功能（如：内存测试、数据恢复、格式转换）
+3. 特性标签：内容的突出特点（如：免费、便携版、中文版、免安装）
+4. 场景标签：适用使用场景（如：办公、设计、开发、学习）
+
+标签选择原则：
+- 标签应为常见分类词，便于用户筛选和搜索
+- 每个标签 1-4 个词，简洁明确
+- 避免过于细分的标签
+- 与文章内容高度相关
+
+数量要求：%d 到 %d 个标签
+标签之间用英文逗号分隔`, p.MinTags, p.MaxTags))
+	}
+
+	promptBuilder.WriteString(strings.Join(fields, ",\n"))
+	promptBuilder.WriteString("\n}\n```\n\n")
+
+	// 添加各功能的详细要求
+	promptBuilder.WriteString("各功能优化要求：\n")
+	for _, req := range requirements {
+		promptBuilder.WriteString(req)
+		promptBuilder.WriteString("\n")
+	}
+
+	promptBuilder.WriteString(`
+【重要】
+1. 只输出 JSON 格式的结果，不要输出任何思考过程、解释或额外文字
+2. 如果某个功能未启用，对应的字段可以返回空字符串
+3. 确保 JSON 格式正确，可以被解析`)
+
+	return promptBuilder.String()
+}
+
+// generateSEOContentIntegrated 整合模式：一次 AI 请求生成所有 SEO 内容
+func (p *AISeoPlugin) generateSEOContentIntegrated(article *entity.Article, apiCfg *APIConfig) (*AISeoResult, error) {
+	p.ctx.Log.Info("Starting integrated SEO content generation",
+		zap.Int("article_id", article.ID),
+		zap.String("title", article.Title),
+		zap.String("api_name", apiCfg.Name))
+
+	result := &AISeoResult{}
+
+	// 获取分类列表（如果启用分类推荐）
+	var categoryList string
+	var categories []entity.Category
+	if p.EnableCategoryRecommend {
+		var err error
+		categories, err = service.Category.List(context.NewContext(100, "id asc"))
+		if err != nil {
+			p.ctx.Log.Warn("Failed to get categories for integrated mode", zap.Error(err))
+		} else {
+			for _, cat := range categories {
+				categoryList += fmt.Sprintf("- %s\n", cat.Name)
+			}
+		}
+	}
+
+	// 构建整合提示词
+	prompt := p.buildIntegratedPrompt(article, categoryList)
+
+	p.ctx.Log.Debug("Integrated prompt built",
+		zap.Int("article_id", article.ID),
+		zap.Int("prompt_length", len(prompt)))
+
+	// 调用 AI API
+	response, err := p.callAIWithConfig(prompt, apiCfg)
+	if err != nil {
+		p.ctx.Log.Error("Failed to call AI API in integrated mode",
+			zap.Int("article_id", article.ID),
+			zap.Error(err))
+		return nil, err
+	}
+
+	// 解析 JSON 响应
+	integratedResp, err := p.parseIntegratedResponse(response)
+	if err != nil {
+		p.ctx.Log.Error("Failed to parse integrated response",
+			zap.Int("article_id", article.ID),
+			zap.Error(err))
+		return nil, err
+	}
+
+	// 处理标题
+	if p.EnableTitleOptimize && integratedResp.Title != "" {
+		// 标题长度限制
+		runes := []rune(integratedResp.Title)
+		if len(runes) > 60 {
+			integratedResp.Title = string(runes[:60])
+		}
+		result.Title = integratedResp.Title
+		p.ctx.Log.Info("Title optimized (integrated)",
+			zap.Int("article_id", article.ID),
+			zap.String("old_title", article.Title),
+			zap.String("new_title", result.Title))
+	}
+
+	// 处理分类
+	if p.EnableCategoryRecommend && integratedResp.Category != "" {
+		for _, cat := range categories {
+			if cat.Name == integratedResp.Category {
+				result.CategoryID = cat.ID
+				result.CategoryChanged = true
+				p.ctx.Log.Info("Category recommended (integrated)",
+					zap.Int("article_id", article.ID),
+					zap.Int("category_id", cat.ID),
+					zap.String("category_name", cat.Name))
+				break
+			}
+		}
+	}
+
+	// 处理关键词
+	if p.EnableKeywords && integratedResp.Keywords != "" {
+		keywords := strings.Split(integratedResp.Keywords, ",")
+		for i, kw := range keywords {
+			keywords[i] = strings.TrimSpace(kw)
+		}
+		// 过滤空字符串
+		var cleanKeywords []string
+		for _, kw := range keywords {
+			if kw != "" {
+				cleanKeywords = append(cleanKeywords, kw)
+			}
+		}
+		result.Keywords = cleanKeywords
+		p.ctx.Log.Info("Keywords extracted (integrated)",
+			zap.Int("article_id", article.ID),
+			zap.Int("count", len(cleanKeywords)),
+			zap.Strings("keywords", cleanKeywords))
+	}
+
+	// 处理描述
+	if p.EnableDescription && integratedResp.Description != "" {
+		// 截断到 250 字符
+		runes := []rune(integratedResp.Description)
+		if len(runes) > 250 {
+			integratedResp.Description = string(runes[:250])
+		}
+		result.Description = integratedResp.Description
+		p.ctx.Log.Info("Description optimized (integrated)",
+			zap.Int("article_id", article.ID),
+			zap.Int("description_length", len(result.Description)))
+	}
+
+	// 处理内容改写
+	if p.EnableRewrite && integratedResp.Content != "" {
+		article.Content = integratedResp.Content
+		result.ContentRewrited = true
+		p.ctx.Log.Info("Content rewritten (integrated)",
+			zap.Int("article_id", article.ID),
+			zap.Int("new_content_length", len(integratedResp.Content)))
+	}
+
+	// 处理标签
+	if p.EnableTags && integratedResp.Tags != "" {
+		tags := strings.Split(integratedResp.Tags, ",")
+		for i, tag := range tags {
+			tags[i] = strings.TrimSpace(tag)
+		}
+		// 过滤空字符串
+		var cleanTags []string
+		for _, tag := range tags {
+			if tag != "" {
+				cleanTags = append(cleanTags, tag)
+			}
+		}
+		result.Tags = cleanTags
+		p.ctx.Log.Info("Tags generated (integrated)",
+			zap.Int("article_id", article.ID),
+			zap.Int("count", len(cleanTags)),
+			zap.Strings("tags", cleanTags))
+	}
+
+	p.ctx.Log.Info("Integrated SEO content generation completed",
+		zap.Int("article_id", article.ID))
+
+	return result, nil
+}
+
 // generateSEOContentWithAPI 使用指定 API 配置生成 SEO 内容
 func (p *AISeoPlugin) generateSEOContentWithAPI(article *entity.Article, apiCfg *APIConfig) (*AISeoResult, error) {
+	// 如果启用整合模式，使用单次 AI 请求处理所有功能
+	if p.EnableIntegratedMode {
+		return p.generateSEOContentIntegrated(article, apiCfg)
+	}
+
+	// 否则使用原有的逐个处理流程
 	result := &AISeoResult{}
 
 	// 1. 标题优化（优先处理，因为后续关键词等依赖标题）
