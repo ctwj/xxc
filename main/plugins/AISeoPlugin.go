@@ -11,6 +11,7 @@ import (
 	"moss/domain/core/vo"
 	pluginEntity "moss/domain/support/entity"
 	"moss/infrastructure/utils/request"
+	"regexp"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -54,15 +55,15 @@ type AISeoPlugin struct {
 	Enable bool `json:"enable"` // 是否启用插件
 
 	// 各功能独立开关
-	EnableTitleOptimize    bool `json:"enable_title_optimize"`    // 启用标题优化
+	EnableTitleOptimize     bool `json:"enable_title_optimize"`     // 启用标题优化
 	EnableCategoryRecommend bool `json:"enable_category_recommend"` // 启用智能分类推荐
-	EnableKeywords        bool `json:"enable_keywords"`          // 启用关键词提取
-	EnableDescription     bool `json:"enable_description"`       // 启用描述优化
-	EnableRewrite         bool `json:"enable_rewrite"`           // 启用内容改写
-	EnableTags            bool `json:"enable_tags"`              // 启用标签生成
+	EnableKeywords          bool `json:"enable_keywords"`           // 启用关键词提取
+	EnableDescription       bool `json:"enable_description"`        // 启用描述优化
+	EnableRewrite           bool `json:"enable_rewrite"`            // 启用内容改写
+	EnableTags              bool `json:"enable_tags"`               // 启用标签生成
 
 	// 整合模式开关
-	EnableIntegratedMode  bool `json:"enable_integrated_mode"`   // 启用整合模式（将多个功能合并到一个 AI 请求中）
+	EnableIntegratedMode bool `json:"enable_integrated_mode"` // 启用整合模式（将多个功能合并到一个 AI 请求中）
 
 	// 关键词配置
 	MinKeywords int `json:"min_keywords"`  // 最少关键词数（默认 4）
@@ -113,12 +114,12 @@ func NewAISeoPlugin() *AISeoPlugin {
 		// 整合模式默认关闭，保持向后兼容
 		EnableIntegratedMode: false, // 默认不启用整合模式
 		// 关键词配置
-		MinKeywords:       4,
-		MaxKeywords:       8,
-		MinLongTail:       2,
+		MinKeywords: 4,
+		MaxKeywords: 8,
+		MinLongTail: 2,
 		// 标签配置
-		MinTags:           1,
-		MaxTags:           3,
+		MinTags: 1,
+		MaxTags: 3,
 		// 其他配置
 		AutoPublish:       false,
 		OtherCategoryName: "其他软件",
@@ -584,7 +585,7 @@ func (p *AISeoPlugin) processArticleWithAPI(article *entity.Article, apiCfg *API
 
 // AISeoResult SEO 生成结果
 type AISeoResult struct {
-	Title           string   `json:"title"`            // 优化后的标题
+	Title           string   `json:"title"` // 优化后的标题
 	CategoryID      int      `json:"category_id"`
 	CategoryChanged bool     `json:"category_changed"`
 	Keywords        []string `json:"keywords"`
@@ -622,13 +623,37 @@ func (p *AISeoPlugin) parseIntegratedResponse(content string) (*IntegratedRespon
 
 	jsonStr := content[startIdx : endIdx+1]
 	p.ctx.Log.Debug("Extracted JSON string",
+		zap.Int("json_length", len(jsonStr)),
 		zap.String("json_preview", truncateText(jsonStr, 500)))
 
+	// 修复无效的 Unicode 转义序列
+	// AI 可能返回大写的 \U 转义（如 \UXXXX），而 JSON 标准只支持小写的 \u
+	// 将 \U 替换为 \u（后面跟着4个十六进制字符）
+	fixedJsonStr := fixInvalidUnicodeEscapes(jsonStr)
+	if fixedJsonStr != jsonStr {
+		p.ctx.Log.Debug("Fixed invalid Unicode escapes in JSON",
+			zap.String("original_preview", truncateText(jsonStr, 200)),
+			zap.String("fixed_preview", truncateText(fixedJsonStr, 200)))
+	}
+
 	var resp IntegratedResponse
-	if err := json.Unmarshal([]byte(jsonStr), &resp); err != nil {
+	if err := json.Unmarshal([]byte(fixedJsonStr), &resp); err != nil {
+		// 详细记录 JSON 解析错误
 		p.ctx.Log.Error("Failed to parse integrated response JSON",
-			zap.String("json_str", truncateText(jsonStr, 500)),
-			zap.Error(err))
+			zap.Error(err),
+			zap.Int("json_length", len(fixedJsonStr)),
+			zap.String("json_preview", truncateText(fixedJsonStr, 1000)),
+			zap.String("json_full", fixedJsonStr),
+			zap.String("error_type", fmt.Sprintf("%T", err)))
+
+		// 尝试定位错误位置
+		if syntaxErr, ok := err.(*json.SyntaxError); ok {
+			p.ctx.Log.Error("JSON syntax error details",
+				zap.Int64("error_offset", syntaxErr.Offset),
+				zap.String("error_message", syntaxErr.Error()),
+				zap.String("context_around_error", getJsonErrorContext(fixedJsonStr, syntaxErr.Offset)))
+		}
+
 		return nil, fmt.Errorf("failed to parse JSON: %w", err)
 	}
 
@@ -837,43 +862,54 @@ func (p *AISeoPlugin) buildIntegratedPrompt(article *entity.Article, categoryLis
 	if p.EnableRewrite {
 		fields = append(fields, `  "content": "改写后的完整文章内容"`)
 		requirements = append(requirements, `
-【内容改写要求】
-SEO 内容优化策略：
+【内容改写要求 - 核心原则：只能扩展，不能缩减！】
 
-【内容结构优化】
-1. 开篇引导（前100字）：核心关键词前置，快速传达文章价值，吸引读者继续阅读
-2. 主体内容：
-   - 每个段落聚焦一个子主题，使用 <h3> 标签添加小标题
-   - 小标题中融入长尾关键词
-   - 内容层次清晰，便于扫读
-3. 内容扩展：增加 30%%-50%% 的深度内容
-   - 详细的功能说明和使用场景
-   - 实用技巧和最佳实践
-   - 常见问题解答
-   - 对比分析和选型建议
+改写后的内容长度必须比原文更长，不能删除原文的任何功能或特点！
 
-【关键词布局】
-- 标题/小标题：自然融入核心关键词
-- 首段：核心关键词 + 1-2个长尾关键词
-- 正文中段：每个关键词出现 2-3 次
-- 结尾：核心关键词再次出现，强化主题
+【原文结构分析】
+原文通常包含以下部分：
+1. 开篇介绍
+2. 软件功能（多个功能点，用<br/>分隔）
+3. 软件特点（多个特点，用<br/>分隔）
 
-【内容质量提升】
-- 专业性：使用准确的专业术语，提供有价值的信息
-- 可读性：段落简洁，句子流畅，避免长句
-- 独特性：提供独特见解或独家信息，避免千篇一律
-- 实用性：加入具体数据、案例、步骤说明
+【改写规则】
+
+一、开篇介绍：用自己的语言重新描述，保持或扩展长度
+
+二、软件功能部分（最重要）：
+- 原文中每个功能点（用<br/>分隔的）都必须改写成独立的段落
+- 不能合并多个功能点到一个段落
+- 每个功能点要扩展说明，写2-3句话
+- 示例：原文有5个功能点，改写后必须有5个独立的<p>段落
+
+三、软件特点部分：
+- 原文中每个特点都必须改写成独立的段落
+- 不能删除任何特点
+
+四、新增板块（必须添加）：
+- 适用人群分析
+- 使用技巧（3-5个独立段落）
+- 常见问题（2-3个问答）
+
+【错误示例 - 绝对禁止】
+原文有3个功能点，改写后只剩1段概括 -> 这是错误的！
+
+【正确改写示例】
+原文2个功能点 -> 改写后必须是2个独立的<p>段落，每个段落扩展说明
 
 【HTML 格式要求】
-- 保留所有原有 HTML 标签结构
-- 保留所有图片标签不变
-- 可添加新的 <h3> 小标题标签
-- 段落使用 <p> 标签
+- 每个段落用独立的 <p> 标签包裹
+- 小标题使用 <h3> 标签
+- 保留原文中的图片标签不变
+- 禁止使用 <br/> 标签
 
-【禁止事项】
-- 不要堆砌关键词
-- 不要复制原文内容
-- 不要添加无关内容`)
+【绝对禁止】
+- 禁止合并多个功能点到一个段落
+- 禁止删除原文的任何功能或特点
+- 禁止使内容变少
+- 禁止复制原文的句子
+- 禁止使用 emoji 表情符号
+- 禁止使用 Markdown 格式`)
 	}
 
 	if p.EnableTags {
@@ -1433,50 +1469,75 @@ func (p *AISeoPlugin) rewriteContent(article *entity.Article, keywords []string)
 
 	// 构建提示词 - 深度 SEO 优化
 	keywordsStr := strings.Join(keywords, "、")
-	prompt := fmt.Sprintf(`你是一个资深 SEO 内容策略专家。请对以下文章进行深度改写和 SEO 优化，提升搜索引擎排名和用户体验。
+	prompt := fmt.Sprintf(`你是一个资深 SEO 内容策略专家。请对以下文章进行**深度改写**和 SEO 优化。
 
 文章标题：%s
 文章内容：%s
 目标关键词：%s
 
-SEO 内容优化策略：
+【核心原则：只能扩展，不能缩减！】
 
-【内容结构优化】
-1. 开篇引导（前100字）：核心关键词前置，快速传达文章价值，吸引读者继续阅读
-2. 主体内容：
-   - 每个段落聚焦一个子主题，使用 <h3> 标签添加小标题
-   - 小标题中融入长尾关键词
-   - 内容层次清晰，便于扫读
-3. 内容扩展：增加 30%%-50%% 的深度内容
-   - 详细的功能说明和使用场景
-   - 实用技巧和最佳实践
-   - 常见问题解答
-   - 对比分析和选型建议
+改写后的内容长度必须比原文更长，不能删除原文的任何功能或特点！
 
-【关键词布局】
-- 标题/小标题：自然融入核心关键词
-- 首段：核心关键词 + 1-2个长尾关键词
-- 正文中段：每个关键词出现 2-3 次
-- 结尾：核心关键词再次出现，强化主题
+【原文结构分析】
+原文通常包含以下部分：
+1. 开篇介绍
+2. 软件功能（多个功能点，用<br/>分隔）
+3. 软件特点（多个特点，用<br/>分隔）
 
-【内容质量提升】
-- 专业性：使用准确的专业术语，提供有价值的信息
-- 可读性：段落简洁，句子流畅，避免长句
-- 独特性：提供独特见解或独家信息，避免千篇一律
-- 实用性：加入具体数据、案例、步骤说明
+【改写规则】
+
+一、开篇介绍：
+- 用自己的语言重新描述，保持或扩展长度
+
+二、软件功能部分（最重要）：
+- 原文中每个功能点（用<br/>分隔的）都必须改写成独立的段落
+- 不能合并多个功能点到一个段落
+- 每个功能点要扩展说明，写2-3句话
+- 示例：原文有5个功能点，改写后必须有5个独立的<p>段落
+
+三、软件特点部分：
+- 原文中每个特点都必须改写成独立的段落
+- 不能删除任何特点
+- 每个特点用一句话描述即可
+
+四、新增板块（必须添加）：
+- 常见问题（2-3个问答，每个问答独立段落）
+
+【错误示例 - 绝对禁止】
+
+原文：
+<p>游戏运行：支持ISO、CSO格式。<br/> 图形优化：支持高清渲染。<br/> 性能优化：支持多核处理器。</p>
+
+错误改写（禁止这样做）：
+<p>PPSSPP支持ISO、CSO格式，支持高清渲染和多核处理器优化。</p> 
+（这是错误的：合并了3个功能点，内容减少了）
+
+【正确改写示例】
+
+原文：
+<p>内存检测：运行多种内存测试。<br/> 错误报告：生成详细的错误报告。</p>
+
+正确改写（必须这样）：
+<p>内存检测功能是软件的核心能力。它采用多层次的测试算法，包括地址总线测试、数据线测试等。用户只需点击开始测试按钮，软件便会自动对内存进行全方位扫描。</p>
+<p>错误报告功能帮助用户快速定位问题。当检测到内存错误时，软件会记录错误的具体地址、错误类型和出现次数。用户可以将报告导出为文本文件。</p>
+（正确：2个功能点变成2个独立段落，内容扩展了）
 
 【HTML 格式要求】
-- 保留所有原有 HTML 标签结构
-- 保留所有图片标签不变
-- 可添加新的 <h3> 小标题标签
-- 段落使用 <p> 标签
+- 每个段落用独立的 <p> 标签包裹
+- 小标题使用 <h3> 标签
+- 保留原文中的图片标签不变
+- 禁止使用 <br/> 标签
 
-【禁止事项】
-- 不要堆砌关键词
-- 不要复制原文内容
-- 不要添加无关内容
+【绝对禁止】
+- 禁止合并多个功能点到一个段落
+- 禁止删除原文的任何功能或特点
+- 禁止使内容变少
+- 禁止复制原文的句子
+- 禁止使用 emoji 表情符号
+- 禁止使用 Markdown 格式
 
-【重要】直接输出改写后的完整文章（从第一个HTML标签开始），不要输出任何思考过程、解释或额外文字。`,
+【重要】改写后内容必须比原文更长。直接输出完整 HTML 文章。`,
 		article.Title,
 		truncateText(article.Content, 2000),
 		keywordsStr,
@@ -1821,50 +1882,75 @@ func (p *AISeoPlugin) rewriteContentWithAPI(article *entity.Article, keywords []
 
 	// 构建提示词 - 深度 SEO 优化
 	keywordsStr := strings.Join(keywords, "、")
-	prompt := fmt.Sprintf(`你是一个资深 SEO 内容策略专家。请对以下文章进行深度改写和 SEO 优化，提升搜索引擎排名和用户体验。
+	prompt := fmt.Sprintf(`你是一个资深 SEO 内容策略专家。请对以下文章进行**深度改写**和 SEO 优化。
 
 文章标题：%s
 文章内容：%s
 目标关键词：%s
 
-SEO 内容优化策略：
+【核心原则：只能扩展，不能缩减！】
 
-【内容结构优化】
-1. 开篇引导（前100字）：核心关键词前置，快速传达文章价值，吸引读者继续阅读
-2. 主体内容：
-   - 每个段落聚焦一个子主题，使用 <h3> 标签添加小标题
-   - 小标题中融入长尾关键词
-   - 内容层次清晰，便于扫读
-3. 内容扩展：增加 30%%-50%% 的深度内容
-   - 详细的功能说明和使用场景
-   - 实用技巧和最佳实践
-   - 常见问题解答
-   - 对比分析和选型建议
+改写后的内容长度必须比原文更长，不能删除原文的任何功能或特点！
 
-【关键词布局】
-- 标题/小标题：自然融入核心关键词
-- 首段：核心关键词 + 1-2个长尾关键词
-- 正文中段：每个关键词出现 2-3 次
-- 结尾：核心关键词再次出现，强化主题
+【原文结构分析】
+原文通常包含以下部分：
+1. 开篇介绍
+2. 软件功能（多个功能点，用<br/>分隔）
+3. 软件特点（多个特点，用<br/>分隔）
 
-【内容质量提升】
-- 专业性：使用准确的专业术语，提供有价值的信息
-- 可读性：段落简洁，句子流畅，避免长句
-- 独特性：提供独特见解或独家信息，避免千篇一律
-- 实用性：加入具体数据、案例、步骤说明
+【改写规则】
+
+一、开篇介绍：
+- 用自己的语言重新描述，保持或扩展长度
+
+二、软件功能部分（最重要）：
+- 原文中每个功能点（用<br/>分隔的）都必须改写成独立的段落
+- 不能合并多个功能点到一个段落
+- 每个功能点要扩展说明，写2-3句话
+- 示例：原文有5个功能点，改写后必须有5个独立的<p>段落
+
+三、软件特点部分：
+- 原文中每个特点都必须改写成独立的段落
+- 不能删除任何特点
+- 每个特点用一句话描述即可
+
+四、新增板块（必须添加）：
+- 常见问题（2-3个问答，每个问答独立段落）
+
+【错误示例 - 绝对禁止】
+
+原文：
+<p>游戏运行：支持ISO、CSO格式。<br/> 图形优化：支持高清渲染。<br/> 性能优化：支持多核处理器。</p>
+
+错误改写（禁止这样做）：
+<p>PPSSPP支持ISO、CSO格式，支持高清渲染和多核处理器优化。</p> 
+（这是错误的：合并了3个功能点，内容减少了）
+
+【正确改写示例】
+
+原文：
+<p>内存检测：运行多种内存测试。<br/> 错误报告：生成详细的错误报告。</p>
+
+正确改写（必须这样）：
+<p>内存检测功能是软件的核心能力。它采用多层次的测试算法，包括地址总线测试、数据线测试等。用户只需点击开始测试按钮，软件便会自动对内存进行全方位扫描。</p>
+<p>错误报告功能帮助用户快速定位问题。当检测到内存错误时，软件会记录错误的具体地址、错误类型和出现次数。用户可以将报告导出为文本文件。</p>
+（正确：2个功能点变成2个独立段落，内容扩展了）
 
 【HTML 格式要求】
-- 保留所有原有 HTML 标签结构
-- 保留所有图片标签不变
-- 可添加新的 <h3> 小标题标签
-- 段落使用 <p> 标签
+- 每个段落用独立的 <p> 标签包裹
+- 小标题使用 <h3> 标签
+- 保留原文中的图片标签不变
+- 禁止使用 <br/> 标签
 
-【禁止事项】
-- 不要堆砌关键词
-- 不要复制原文内容
-- 不要添加无关内容
+【绝对禁止】
+- 禁止合并多个功能点到一个段落
+- 禁止删除原文的任何功能或特点
+- 禁止使内容变少
+- 禁止复制原文的句子
+- 禁止使用 emoji 表情符号
+- 禁止使用 Markdown 格式
 
-【重要】直接输出改写后的完整文章（从第一个HTML标签开始），不要输出任何思考过程、解释或额外文字。`,
+【重要】改写后内容必须比原文更长。直接输出完整 HTML 文章。`,
 		article.Title,
 		truncateText(article.Content, 2000),
 		keywordsStr,
@@ -2456,7 +2542,7 @@ func (p *AISeoPlugin) parseNVIDIAResponse(respBody []byte) (string, error) {
 	// 记录思考过程（如果有）
 	reasoningLen := len(resp.Choices[0].Message.ReasoningContent)
 	contentLen := len(resp.Choices[0].Message.Content)
-	
+
 	p.ctx.Log.Info("NVIDIA response details",
 		zap.Int("reasoning_length", reasoningLen),
 		zap.Int("content_length", contentLen),
@@ -2613,4 +2699,40 @@ func safeKeyPrefix(key string) string {
 		return "[too short]"
 	}
 	return key[:4] + "..."
+}
+
+// fixInvalidUnicodeEscapes 修复无效的 Unicode 转义序列
+// AI 可能返回大写的 \U 转义（如 \Uxxxx)，而 JSON 标准只支持小写的 \u
+// 将 \U 替换为 \u（后面跟着4个十六进制字符）
+func fixInvalidUnicodeEscapes(jsonStr string) string {
+	// 匹配 \U 后面跟着4个十六进制字符的模式
+	// 例如: \U1F4A -> \u1F4A
+	re := regexp.MustCompile(`\\U([0-9A-Fa-f]{4})`)
+	return re.ReplaceAllString(jsonStr, `\\u$1`)
+}
+
+// getJsonErrorContext 获取 JSON 错误位置附近的内容，用于调试
+func getJsonErrorContext(jsonStr string, offset int64) string {
+	if offset < 0 || offset > int64(len(jsonStr)) {
+		return "offset out of range"
+	}
+
+	// 获取错误位置前后各50个字符
+	start := offset - 50
+	if start < 0 {
+		start = 0
+	}
+	end := offset + 50
+	if end > int64(len(jsonStr)) {
+		end = int64(len(jsonStr))
+	}
+
+	context := jsonStr[start:end]
+	// 标记错误位置
+	errorPos := offset - start
+	if errorPos >= 0 && errorPos < int64(len(context)) {
+		// 在错误位置插入标记
+		context = context[:errorPos] + ">>>ERROR_HERE<<<" + context[errorPos:]
+	}
+	return context
 }
