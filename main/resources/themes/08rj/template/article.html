@@ -1,0 +1,191 @@
+{{extends "./layout/layout.html"}}
+
+{{block main()}}
+{{ tags := Tag().Limit(10).ListByArticleID(Data.ID) }}
+{{ ancestors := Widget.Breadcrumb(Data.CategoryID) }}
+
+<div class="container mx-auto max-w-6xl">
+    <!-- Breadcrumb -->
+    <nav class="mb-6">
+        <ol class="flex items-center space-x-2 text-sm text-gray-500 flex-wrap">
+            <li><a href="/" class="hover:text-primary-600 transition-colors">首页</a></li>
+            {{ range i, v := ancestors }}
+            <li><i class="fas fa-chevron-right text-xs"></i></li>
+            <li>
+                <a href="{{ v.URL() }}" class="hover:text-primary-600 transition-colors">{{ v.Name }}</a>
+            </li>
+            {{ end }}
+            <li><i class="fas fa-chevron-right text-xs"></i></li>
+            <li><span class="text-gray-900 truncate max-w-xs inline-block">{{ Data.Title }}</span></li>
+        </ol>
+    </nav>
+
+    <div class="flex flex-col lg:flex-row gap-8">
+        <!-- Main Content -->
+        <article class="flex-1 min-w-0">
+            <!-- Article Header -->
+            <header class="bg-white rounded-2xl p-6 md:p-8 shadow-sm border border-gray-100 mb-6">
+                <h1 class="text-2xl md:text-3xl font-bold text-gray-900 mb-4 leading-tight">{{ Data.Title }}</h1>
+                
+                <div class="flex flex-wrap items-center gap-4 text-sm text-gray-500 mb-4">
+                    <span class="flex items-center">
+                        <i class="fas fa-calendar-alt mr-2 text-primary-500"></i>
+                        {{ Data.CreateTimeFormat() }}
+                    </span>
+                    <span class="flex items-center">
+                        <i class="fas fa-eye mr-2 text-primary-500"></i>
+                        {{ Data.Views }} 次浏览
+                    </span>
+                    {{ if Data.ArticleCategory != nil }}
+                    <a href="{{ Data.ArticleCategory.URL() }}" class="flex items-center hover:text-primary-600 transition-colors">
+                        <i class="fas fa-folder mr-2 text-primary-500"></i>
+                        {{ Data.ArticleCategory.Name }}
+                    </a>
+                    {{ end }}
+                </div>
+
+                {{ if Data.Description != "" }}
+                <p class="text-gray-600 leading-relaxed">{{ Data.Description }}</p>
+                {{ end }}
+
+                {{ if len(tags) > 0 }}
+                <div class="flex flex-wrap gap-2 mt-4">
+                    {{ range i, t := tags }}
+                    <a href="{{ t.URL() }}" class="px-3 py-1 bg-primary-100 text-primary-700 text-sm rounded-full hover:bg-primary-200 transition-colors">
+                        <i class="fas fa-tag mr-1 text-xs"></i>{{ t.Name }}
+                    </a>
+                    {{ end }}
+                </div>
+                {{ end }}
+            </header>
+
+            <!-- Article Content -->
+            <div class="bg-white rounded-2xl p-6 md:p-8 shadow-sm border border-gray-100 mb-6">
+                {{ if Data.Content != "" }}
+                <div class="prose prose-lg max-w-none article-content">
+                    {{ Data.Content | raw }}
+                </div>
+                {{ else }}
+                <div class="text-center py-12 text-gray-500">
+                    <i class="fas fa-file-alt text-4xl mb-4 text-gray-300"></i>
+                    <p>暂无内容</p>
+                </div>
+                {{ end }}
+            </div>
+
+            <!-- Extended Fields -->
+            {{ if len(Data.Extends) > 0 }}
+            <div class="bg-white rounded-2xl p-6 md:p-8 shadow-sm border border-gray-100 mb-6">
+                <h2 class="text-xl font-bold text-gray-900 mb-4 flex items-center">
+                    <i class="fas fa-info-circle text-primary-500 mr-2"></i>
+                    详细信息
+                </h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {{ range i, ext := Data.Extends }}
+                    <div class="flex items-start p-3 bg-gray-50 rounded-lg">
+                        <span class="text-gray-500 text-sm min-w-[80px] flex-shrink-0">{{ ext.Key }}:</span>
+                        <span class="text-gray-900 text-sm flex-1">{{ ext.Value }}</span>
+                    </div>
+                    {{ end }}
+                </div>
+            </div>
+            {{ end }}
+
+            <!-- Download Resources Section -->
+            {{ if len(Data.Res) > 0 }}
+            <div class="bg-gradient-to-r from-primary-50 to-secondary-50 rounded-2xl p-6 md:p-8 shadow-sm border border-primary-100 mb-6">
+                <h2 class="text-xl font-bold text-gray-900 mb-4 flex items-center">
+                    <i class="fas fa-download text-primary-500 mr-2"></i>
+                    下载资源
+                </h2>
+                <div class="space-y-3">
+                    {{ range i, res := Data.Res }}
+                    <div class="bg-white rounded-xl p-4 border border-gray-200 hover:shadow-md transition-shadow">
+                        <div class="flex items-center min-w-0">
+                            <div class="w-10 h-10 bg-gradient-to-br from-primary-400 to-secondary-500 rounded-lg flex items-center justify-center mr-3 flex-shrink-0">
+                                <i class="fas fa-cloud-download-alt text-white"></i>
+                            </div>
+                            <div class="min-w-0 flex-1">
+                                <h3 class="font-medium text-gray-900 truncate">{{ res.Key }}</h3>
+                            </div>
+                        </div>
+                    </div>
+                    {{ end }}
+                </div>
+            </div>
+            {{ end }}
+        </article>
+
+        <!-- Sidebar -->
+        <aside class="w-full lg:w-80 flex-shrink-0">
+            <!-- Article Info Card -->
+            <div class="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 mb-6 sticky top-24">
+                {{ if Data.Thumbnail != "" }}
+                <div class="mb-4">
+                    <img src="{{ Data.Thumbnail }}" alt="{{ Data.Title }}" class="w-full h-48 object-cover rounded-xl">
+                </div>
+                {{ end }}
+                
+                <div class="space-y-3">
+                    <div class="flex items-center text-sm text-gray-600">
+                        <i class="fas fa-hashtag w-5 text-primary-500"></i>
+                        <span>文章ID: {{ Data.ID }}</span>
+                    </div>
+                    <div class="flex items-center text-sm text-gray-600">
+                        <i class="fas fa-link w-5 text-primary-500"></i>
+                        <span class="truncate">slug: {{ Data.Slug }}</span>
+                    </div>
+                    {{ if Data.Keywords != "" }}
+                    <div class="flex items-start text-sm text-gray-600">
+                        <i class="fas fa-key w-5 text-primary-500 mt-0.5"></i>
+                        <span class="flex-1">{{ Data.Keywords }}</span>
+                    </div>
+                    {{ end }}
+                </div>
+            </div>
+
+            <!-- Related Articles -->
+            {{ relatedArticles := Article().Limit(5).Order("views desc").ListByCategoryID(Data.CategoryID) }}
+            {{ if len(relatedArticles) > 0 }}
+            <div class="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 mb-6">
+                <h3 class="text-lg font-bold text-gray-900 mb-4 flex items-center">
+                    <i class="fas fa-fire text-orange-500 mr-2"></i>
+                    相关推荐
+                </h3>
+                <div class="space-y-3">
+                    {{ range i, v := relatedArticles }}
+                    {{ if v.ID != Data.ID }}
+                    <a href="{{ v.URL() }}" class="block p-3 bg-gray-50 rounded-lg hover:bg-primary-50 transition-colors">
+                        <h4 class="font-medium text-gray-900 text-sm truncate">{{ v.Title }}</h4>
+                        <div class="flex items-center justify-between mt-1 text-xs text-gray-500">
+                            <span>{{ v.CreateTimeFormat("2006-01-02") }}</span>
+                            <span><i class="fas fa-eye mr-1"></i>{{ v.Views }}</span>
+                        </div>
+                    </a>
+                    {{ end }}
+                    {{ end }}
+                </div>
+            </div>
+            {{ end }}
+
+            <!-- Tag Cloud -->
+            {{ tagCloud := Widget.TagCloud() }}
+            {{ if len(tagCloud) > 0 }}
+            <div class="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+                <h3 class="text-lg font-bold text-gray-900 mb-4 flex items-center">
+                    <i class="fas fa-tags text-primary-500 mr-2"></i>
+                    标签云
+                </h3>
+                <div class="flex flex-wrap gap-2">
+                    {{ range i, t := tagCloud }}
+                    <a href="{{ t.URL() }}" class="px-3 py-1 bg-gray-100 text-gray-700 text-sm rounded-full hover:bg-primary-100 hover:text-primary-700 transition-colors">
+                        {{ t.Name }}
+                    </a>
+                    {{ end }}
+                </div>
+            </div>
+            {{ end }}
+        </aside>
+    </div>
+</div>
+{{end}}

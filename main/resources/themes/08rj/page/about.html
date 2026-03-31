@@ -1,0 +1,43 @@
+{{extends "./layout/layout.html"}}
+
+{{block main()}}
+<div class="container mx-auto max-w-4xl py-8">
+    <!-- Page Header -->
+    <div class="bg-gradient-to-r from-primary-50 to-secondary-50 rounded-2xl p-6 md:p-8 mb-8">
+        <h1 class="text-2xl md:text-3xl font-bold text-gray-900 mb-2">关于我们</h1>
+        <p class="text-gray-600">了解零八软件</p>
+    </div>
+
+    <!-- Content -->
+    <article class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 md:p-8">
+        <div class="prose prose-lg max-w-none">
+            <h2>欢迎来到零八软件</h2>
+            <p>
+                零八软件是一个专注于提供优质软件资源下载的平台。我们致力于为用户提供安全、可靠、便捷的软件下载服务。
+            </p>
+            
+            <h2>我们的使命</h2>
+            <p>
+                帮助用户发现和获取优质的软件资源，让数字生活更加便捷和丰富。
+            </p>
+            
+            <h2>联系方式</h2>
+            <p>
+                如果您有任何问题或建议，欢迎通过以下方式联系我们：
+            </p>
+            <ul>
+                <li>网站：{{ Config.Site.URL }}</li>
+                <li>邮箱：contact@08rj.com</li>
+            </ul>
+        </div>
+    </article>
+
+    <!-- Back Link -->
+    <div class="mt-8">
+        <a href="/" class="flex items-center text-gray-600 hover:text-primary-600 transition-colors">
+            <i class="fas fa-arrow-left mr-2"></i>
+            返回首页
+        </a>
+    </div>
+</div>
+{{end}}
