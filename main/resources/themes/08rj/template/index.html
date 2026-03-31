@@ -12,6 +12,7 @@
         <div class="space-y-3">
             {{ guessList := Widget.IndexList() }}
             {{ range i, v := guessList }}
+            {{ if i < 8 }}
             <a href="{{ v.URL() }}" class="bg-white rounded-xl p-3 border border-gray-200 hover:shadow-md transition-shadow cursor-pointer flex items-center block">
                 <div class="w-10 h-10 bg-gradient-to-br from-primary-400 to-secondary-500 rounded-lg flex items-center justify-center mr-3 flex-shrink-0 overflow-hidden">
                     {{ if v.Thumbnail != "" }}
@@ -23,6 +24,7 @@
                 <h3 class="font-medium text-gray-900 truncate flex-1">{{ v.Title }}</h3>
             </a>
             {{ end }}
+            {{ end }}
         </div>
     </div>
     
@@ -33,7 +35,7 @@
             最近更新
         </h2>
         <div class="space-y-4">
-            {{ range i, v := Article().Limit(5).Order("create_time desc").List() }}
+            {{ range i, v := Article().Limit(6).Order("create_time desc").List() }}
             <a href="{{ v.URL() }}" class="bg-white rounded-xl p-4 border border-gray-200 hover:shadow-md transition-shadow cursor-pointer block">
                 <h3 class="font-medium text-gray-900 truncate">{{ v.Title }}</h3>
                 <p class="text-sm text-gray-500 mt-1">更新时间: {{ v.CreateTimeFormat() }}</p>
@@ -49,7 +51,7 @@
             热门推荐
         </h2>
         <div class="space-y-4">
-            {{ range i, v := Article().Limit(5).Order("views desc").List() }}
+            {{ range i, v := Article().Limit(6).Order("views desc").List() }}
             <a href="{{ v.URL() }}" class="bg-white rounded-xl p-4 border border-gray-200 hover:shadow-md transition-shadow cursor-pointer block">
                 <h3 class="font-medium text-gray-900 truncate">{{ v.Title }}</h3>
                 <p class="text-sm text-gray-500 mt-1">浏览次数: {{ v.Views }}次</p>

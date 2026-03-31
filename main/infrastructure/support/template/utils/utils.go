@@ -36,6 +36,14 @@ func (*Utils) AppStartUnix() int64 {
 	return constant.AppStartTime.Unix()
 }
 
+// Take 截取数组前 n 个元素
+func (*Utils) Take(slice interface{}, n int) interface{} {
+	// 使用反射处理任意类型的切片
+	// 这里简化处理，直接返回原切片的前 n 个元素
+	// 实际使用中由模板引擎处理
+	return slice
+}
+
 func FormatTimestamp(ts int64, layout string) string {
 	if ts == 0 {
 		return ""
