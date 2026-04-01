@@ -142,23 +142,44 @@ func (w *Widget) CategoryPageList(categoryID, pageNumber int) (res PageListResul
 		fastOffsetMinPage = config.Config.More.FastOffsetMinPage // 加速分页查询时，最小分页数
 		fastOffset        = fastOffsetMinPage > 0 && pageNumber > fastOffsetMinPage
 	)
+	// 获取当前分类及所有子分类的ID
+	categoryIds := w.getAllCategoryIDs(categoryID)
 	// 查询数据函数
 	var listFun = func() (any, int) {
 		ctx := &context.Context{Limit: opt.Limit, Order: opt.Order, Page: pageNumber, FastOffset: fastOffset, Comment: "Widget.CategoryPageList"}
 		// 添加状态过滤，只显示已发布的文章
 		ctx.Where = &context.Where{Field: "status", Operator: context.WhereOperatorEqualTrue}
-		list, err := service.Article.ListByCategoryIDWithDetail(ctx, categoryID)
+		list, err := service.Article.ListByCategoryIdsWithDetail(ctx, categoryIds)
 		log.ErrorShortcut("template widget error", err)
+		if len(list) == 0 {
+			return nil, 0
+		}
 		return list, len(list)
 	}
 	// 统计总数函数
 	var countFun = func() (res int64) {
 		// 使用原生SQL同时过滤分类ID和状态
-		err := db.DB.Model(&coreEntity.ArticleBase{}).Where("category_id = ? AND status = ?", categoryID, true).Count(&res).Error
+		err := db.DB.Model(&coreEntity.ArticleBase{}).Where("category_id IN ? AND status = ?", categoryIds, true).Count(&res).Error
 		log.ErrorShortcut("template widget error", err)
 		return
 	}
 	return w.pageList(opt, pageNumber, listFun, countFun)
+}
+
+// getAllCategoryIDs 递归获取分类及其所有子分类的ID
+func (w *Widget) getAllCategoryIDs(categoryID int) []int {
+	ids := []int{categoryID}
+	// 获取子分类
+	children, err := service.Category.ListChildren(context.NewContextWithComment(1000, "", "Widget.getAllCategoryIDs"), categoryID)
+	if err != nil {
+		log.ErrorShortcut("template widget error", err)
+		return ids
+	}
+	// 递归获取子分类的子分类
+	for _, child := range children {
+		ids = append(ids, w.getAllCategoryIDs(child.ID)...)
+	}
+	return ids
 }
 
 // TagPageList 标签页列表

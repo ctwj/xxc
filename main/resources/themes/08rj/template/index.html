@@ -62,13 +62,10 @@
 </div>
 
 <!-- Software Download Section -->
+{{ res := Widget.IndexList() }}
 <section class="mb-12">
     <div class="flex items-center justify-between mb-6">
         <h2 class="text-2xl font-bold text-gray-900">软件下载</h2>
-        <div class="text-sm text-gray-500">
-            {{ res := Widget.IndexList() }}
-            共 {{ len(res) }} 个软件
-        </div>
     </div>
     
     <!-- Category Tags -->
@@ -117,10 +114,17 @@
 <section class="mb-12">
     <div class="flex items-center justify-between mb-6">
         <h2 class="text-2xl font-bold text-gray-900">文章专区</h2>
+        <a href="/category/tutorial" class="text-sm text-primary-600 hover:text-primary-700 flex items-center">
+            查看更多 <i class="fas fa-chevron-right ml-1 text-xs"></i>
+        </a>
     </div>
     
     <!-- Article List -->
+    {{ tutorialCat := Category().GetBySlug("tutorial") }}
     {{ globalList := Widget.GlobalList() }}
+    {{ if tutorialCat != nil }}
+        {{ globalList = Article().Limit(9).ListByCategoryID(tutorialCat.ID) }}
+    {{ end }}
     {{ if len(globalList) > 0 }}
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {{ range i, v := globalList }}

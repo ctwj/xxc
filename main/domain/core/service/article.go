@@ -258,6 +258,12 @@ func (s *ArticleService) ListByCategoryIDWithDetail(ctx *context.Context, id int
 	return
 }
 
+// ListByCategoryIdsWithDetail 通过多个分类ID调用文章列表（包含详情，用于模板渲染）
+func (s *ArticleService) ListByCategoryIdsWithDetail(ctx *context.Context, ids []int) (res []entity.Article, err error) {
+	res, err = repository.Article.ListByCategoryIdsWithDetail(ctx, ids)
+	return
+}
+
 // ListByCategoryIds 通过分类ID调用文章列表
 func (s *ArticleService) ListByCategoryIds(ctx *context.Context, ids []int) (res []entity.ArticleBase, err error) {
 	if len(ids) == 0 {

@@ -49,6 +49,20 @@ func (c *Category) Get(id int) *entity.Category {
 	return res
 }
 
+// GetBySlug 通过 slug 获取分类
+func (c *Category) GetBySlug(slug string) *entity.Category {
+	res, err := service.Category.GetBySlug(slug)
+	log.WarnShortcut("template query error", err)
+	return res
+}
+
+// GetByName 通过名称获取分类
+func (c *Category) GetByName(name string) *entity.Category {
+	res, err := service.Category.GetByName(name)
+	log.WarnShortcut("template query error", err)
+	return res
+}
+
 // List 调用列表
 func (c *Category) List() (res []entity.Category) {
 	res, err := service.Category.List(c.context())

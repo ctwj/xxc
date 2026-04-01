@@ -220,11 +220,19 @@ func (r *ArticleRepo) ListByCategoryIds(ctx *context.Context, categoryIds []int)
 
 // ListByCategoryIDWithDetail 根据分类ID调用文章列表（包含详情，用于模板渲染）
 func (r *ArticleRepo) ListByCategoryIDWithDetail(ctx *context.Context, categoryID int) (res []entity.Article, err error) {
+	return r.ListByCategoryIdsWithDetail(ctx, []int{categoryID})
+}
+
+// ListByCategoryIdsWithDetail 根据多个分类ID调用文章列表（包含详情，用于模板渲染）
+func (r *ArticleRepo) ListByCategoryIdsWithDetail(ctx *context.Context, categoryIds []int) (res []entity.Article, err error) {
+	if len(categoryIds) == 0 {
+		return
+	}
 	err = db.DB.Transaction(func(tx *gorm.DB) error {
 		// 查询基础信息
 		var articleBases []entity.ArticleBase
 		if err := tx.Model(&entity.ArticleBase{}).
-			Scopes(gormx.Context(ctx, gormx.WhereCategoryIds([]int{categoryID}))).
+			Scopes(gormx.Context(ctx, gormx.WhereCategoryIds(categoryIds))).
 			Find(&articleBases).Error; err != nil {
 			return err
 		}
