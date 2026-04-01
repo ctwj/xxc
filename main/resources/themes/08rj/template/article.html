@@ -1,5 +1,48 @@
 {{extends "./layout/layout.html"}}
 
+{{block head()}}
+<!-- Article Open Graph -->
+<meta property="og:type" content="article" />
+<meta property="article:published_time" content="{{ Data.CreateTimeFormat }}" />
+{{ if Data.Thumbnail != "" }}
+<meta property="og:image" content="{{ Data.Thumbnail }}" />
+<meta name="twitter:image" content="{{ Data.Thumbnail }}" />
+{{ end }}
+<meta property="og:url" content="{{ Config.Site.URL }}{{ Page.Path }}" />
+
+<!-- Twitter Card -->
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="{{ Data.Title }}" />
+{{ if Data.Description != "" }}
+<meta name="twitter:description" content="{{ Data.Description }}" />
+<meta property="og:description" content="{{ Data.Description }}" />
+{{ end }}
+
+<!-- Software Application Schema -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": ["Article", "SoftwareApplication"],
+  "headline": "{{ Data.Title }}",
+  "name": "{{ Data.Title }}",
+  "description": "{{ Data.Description }}",
+  "datePublished": "{{ Data.CreateTimeFormat }}",
+  "dateModified": "{{ Data.CreateTimeFormat }}",
+  "image": "{{ if Data.Thumbnail }}{{ Data.Thumbnail }}{{ end }}",
+  "url": "{{ Config.Site.URL }}{{ Page.Path }}",
+  "author": {
+    "@type": "Organization",
+    "name": "{{ Config.Site.Name }}"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "{{ Config.Site.Name }}",
+    "url": "{{ Config.Site.URL }}"
+  }
+}
+</script>
+{{end}}
+
 {{block main()}}
 {{ tags := Tag().Limit(10).ListByArticleID(Data.ID) }}
 {{ ancestors := Widget.Breadcrumb(Data.CategoryID) }}

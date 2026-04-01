@@ -17,6 +17,10 @@
     <meta name="keywords" content="{{ Page.Keywords }}">
     {{ end }}
     <link rel="canonical" href="{{ Config.Site.URL }}{{ Page.Path }}" />
+    <!-- 子模板 SEO head -->
+    {{ if Page.Name == "article" }}
+    {{ block head() }}{{ end }}
+    {{ end }}
     <meta property="og:site_name" content="{{ Config.Site.Name }}" />
     <meta property="og:type" content="{{ if Page.Name == `article` }}article{{ else }}website{{ end }}" />
     <meta property="og:title" content="{{ Page.Title }}" />
