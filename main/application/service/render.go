@@ -3,17 +3,16 @@ package service
 import (
 	"errors"
 	"fmt"
-	"go.uber.org/zap"
 	"moss/domain/config"
 	"moss/domain/core/entity"
 	coreCtx "moss/domain/core/repository/context"
 	"moss/domain/core/service"
 	"moss/infrastructure/persistent/db"
-	"moss/infrastructure/support/log"
 	"moss/infrastructure/support/template"
 	"net/url"
 	"path/filepath"
 	"strconv"
+	"strings"
 )
 
 var Render = new(RenderService)
@@ -141,11 +140,126 @@ func (r *RenderService) Article(item *entity.Article) (_ []byte, err error) {
 	articleMap["Extends"] = item.Extends
 	articleMap["Res"] = item.Res
 
-	// DEBUG: log extends data
-	log.Info("article render extends", zap.Int("count", len(item.Extends)))
-	for _, ext := range item.Extends {
-		log.Info("article extend item", zap.String("key", ext.Key), zap.Any("value", ext.Value))
+	// 关键字拆分
+	var keywordList []string
+	if item.Keywords != "" {
+		// 支持中英文逗号分隔
+		keywords := strings.Split(item.Keywords, ",")
+		for _, kw := range keywords {
+			kw = strings.TrimSpace(kw)
+			if kw != "" {
+				keywordList = append(keywordList, kw)
+			}
+		}
+		// 也尝试中文逗号
+		if len(keywordList) == 0 {
+			keywords = strings.Split(item.Keywords, "，")
+			for _, kw := range keywords {
+				kw = strings.TrimSpace(kw)
+				if kw != "" {
+					keywordList = append(keywordList, kw)
+				}
+			}
+		}
 	}
+	articleMap["KeywordList"] = keywordList
+
+	// 侧边栏信息：只提取 language, file_size, version
+	type SidebarInfo struct {
+		Key   string `json:"key"`
+		Value string `json:"value"`
+		Icon  string `json:"icon"`
+		Label string `json:"label"`
+	}
+	var sidebarInfo []SidebarInfo
+	sidebarKeys := map[string]struct {
+		Icon  string
+		Label string
+	}{
+		"language":  {"fas fa-globe", "语言"},
+		"file_size": {"fas fa-hdd", "文件大小"},
+		"version":   {"fas fa-code-branch", "版本"},
+	}
+	for _, ext := range item.Extends {
+		if info, ok := sidebarKeys[ext.Key]; ok {
+			valueStr := fmt.Sprintf("%v", ext.Value)
+			sidebarInfo = append(sidebarInfo, SidebarInfo{
+				Key:   ext.Key,
+				Value: valueStr,
+				Icon:  info.Icon,
+				Label: info.Label,
+			})
+		}
+	}
+	articleMap["SidebarInfo"] = sidebarInfo
+
+	// 处理下载资源
+	// 1. 优先查找 saved 字段，如果存在且不为空，返回 saved 列表（移除 url）
+	// 2. 否则查找 download_links 字段，返回列表（移除直链类型和 url）
+	type DownloadItem struct {
+		Type     string `json:"type"`
+		Password string `json:"password,omitempty"`
+		Slug     string `json:"slug"`
+	}
+	var downloadList []DownloadItem
+	slug := item.Slug
+
+	// 查找 saved 字段
+	var savedValue []interface{}
+	for _, res := range item.Res {
+		if res.Key == "saved" {
+			if arr, ok := res.Value.([]interface{}); ok && len(arr) > 0 {
+				savedValue = arr
+				break
+			}
+		}
+	}
+
+	if len(savedValue) > 0 {
+		// 返回 saved 列表，移除 url
+		for _, v := range savedValue {
+			if m, ok := v.(map[string]interface{}); ok {
+				downloadItem := DownloadItem{Slug: slug}
+				if typeVal, ok := m["type"].(string); ok {
+					downloadItem.Type = typeVal
+				}
+				if pwdVal, ok := m["password"].(string); ok {
+					downloadItem.Password = pwdVal
+				}
+				if downloadItem.Type != "" {
+					downloadList = append(downloadList, downloadItem)
+				}
+			}
+		}
+	} else {
+		// 查找 download_links 字段
+		for _, res := range item.Res {
+			if res.Key == "download_links" {
+				if arr, ok := res.Value.([]interface{}); ok {
+					for _, v := range arr {
+						if m, ok := v.(map[string]interface{}); ok {
+							// 跳过直链类型
+							if typeVal, ok := m["type"].(string); ok {
+								if typeVal == "直链" {
+									continue
+								}
+								downloadItem := DownloadItem{
+									Type: typeVal,
+									Slug: slug,
+								}
+								if pwdVal, ok := m["password"].(string); ok {
+									downloadItem.Password = pwdVal
+								}
+								downloadList = append(downloadList, downloadItem)
+							}
+						}
+					}
+				}
+				break
+			}
+		}
+	}
+	articleMap["DownloadList"] = downloadList
 
 	return template.Render("template/article.html", template.Binds{
 		Page: template.Page{

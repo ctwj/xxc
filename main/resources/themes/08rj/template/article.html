@@ -15,8 +15,6 @@
                 <a href="{{ v.URL() }}" class="hover:text-primary-600 transition-colors">{{ v.Name }}</a>
             </li>
             {{ end }}
-            <li><i class="fas fa-chevron-right text-xs"></i></li>
-            <li><span class="text-gray-900 truncate max-w-xs inline-block">{{ Data.Title }}</span></li>
         </ol>
     </nav>
 
@@ -27,6 +25,7 @@
             <header class="bg-white rounded-2xl p-6 md:p-8 shadow-sm border border-gray-100 mb-6">
                 <h1 class="text-2xl md:text-3xl font-bold text-gray-900 mb-4 leading-tight">{{ Data.Title }}</h1>
                 
+                <!-- 发布时间和浏览量 -->
                 <div class="flex flex-wrap items-center gap-4 text-sm text-gray-500 mb-4">
                     <span class="flex items-center">
                         <i class="fas fa-calendar-alt mr-2 text-primary-500"></i>
@@ -36,24 +35,21 @@
                         <i class="fas fa-eye mr-2 text-primary-500"></i>
                         {{ Data.Views }} 次浏览
                     </span>
-                    {{ if Data.ArticleCategory != nil }}
-                    <a href="{{ Data.ArticleCategory.URL() }}" class="flex items-center hover:text-primary-600 transition-colors">
+                    {{ if Data.Category != nil }}
+                    <a href="{{ Data.Category.URL() }}" class="flex items-center hover:text-primary-600 transition-colors">
                         <i class="fas fa-folder mr-2 text-primary-500"></i>
-                        {{ Data.ArticleCategory.Name }}
+                        {{ Data.Category.Name }}
                     </a>
                     {{ end }}
                 </div>
 
-                {{ if Data.Description != "" }}
-                <p class="text-gray-600 leading-relaxed">{{ Data.Description }}</p>
-                {{ end }}
-
-                {{ if len(tags) > 0 }}
-                <div class="flex flex-wrap gap-2 mt-4">
-                    {{ range i, t := tags }}
-                    <a href="{{ t.URL() }}" class="px-3 py-1 bg-primary-100 text-primary-700 text-sm rounded-full hover:bg-primary-200 transition-colors">
-                        <i class="fas fa-tag mr-1 text-xs"></i>{{ t.Name }}
-                    </a>
+                <!-- 关键字标签 -->
+                {{ if len(Data.KeywordList) > 0 }}
+                <div class="flex flex-wrap gap-2">
+                    {{ range i, kw := Data.KeywordList }}
+                    <span class="inline-flex items-center px-3 py-1 bg-gradient-to-r from-primary-50 to-blue-50 text-primary-700 text-sm rounded-full border border-primary-100">
+                        <i class="fas fa-hashtag mr-1 text-xs opacity-60"></i>{{ kw }}
+                    </span>
                     {{ end }}
                 </div>
                 {{ end }}
@@ -73,42 +69,41 @@
                 {{ end }}
             </div>
 
-            <!-- Extended Fields -->
-            {{ if len(Data.Extends) > 0 }}
-            <div class="bg-white rounded-2xl p-6 md:p-8 shadow-sm border border-gray-100 mb-6">
-                <h2 class="text-xl font-bold text-gray-900 mb-4 flex items-center">
-                    <i class="fas fa-info-circle text-primary-500 mr-2"></i>
-                    详细信息
-                </h2>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {{ range i, ext := Data.Extends }}
-                    <div class="flex items-start p-3 bg-gray-50 rounded-lg">
-                        <span class="text-gray-500 text-sm min-w-[80px] flex-shrink-0">{{ ext.Key }}:</span>
-                        <span class="text-gray-900 text-sm flex-1">{{ ext.Value }}</span>
-                    </div>
-                    {{ end }}
-                </div>
-            </div>
-            {{ end }}
-
             <!-- Download Resources Section -->
-            {{ if len(Data.Res) > 0 }}
-            <div class="bg-gradient-to-r from-primary-50 to-secondary-50 rounded-2xl p-6 md:p-8 shadow-sm border border-primary-100 mb-6">
-                <h2 class="text-xl font-bold text-gray-900 mb-4 flex items-center">
-                    <i class="fas fa-download text-primary-500 mr-2"></i>
+            {{ if len(Data.DownloadList) > 0 }}
+            <div id="download-section" class="bg-white rounded-2xl p-6 md:p-8 shadow-sm border border-gray-100 mb-6">
+                <h2 class="text-xl font-bold text-gray-900 mb-6 flex items-center">
+                    <div class="w-10 h-10 bg-gray-100 rounded-xl flex items-center justify-center mr-3">
+                        <i class="fas fa-cloud-download-alt text-gray-600"></i>
+                    </div>
                     下载资源
+                    <span class="ml-auto text-sm font-normal text-gray-500 bg-gray-100 px-3 py-1 rounded-full">
+                        共 {{ len(Data.DownloadList) }} 个网盘
+                    </span>
                 </h2>
-                <div class="space-y-3">
-                    {{ range i, res := Data.Res }}
-                    <div class="bg-white rounded-xl p-4 border border-gray-200 hover:shadow-md transition-shadow">
-                        <div class="flex items-center min-w-0">
-                            <div class="w-10 h-10 bg-gradient-to-br from-primary-400 to-secondary-500 rounded-lg flex items-center justify-center mr-3 flex-shrink-0">
-                                <i class="fas fa-cloud-download-alt text-white"></i>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {{ range i, download := Data.DownloadList }}
+                    <div class="group flex items-center justify-between p-4 bg-gray-50 rounded-xl border border-gray-100 hover:border-primary-200 hover:bg-primary-50/50 transition-all">
+                        <div class="flex items-center min-w-0 flex-1">
+                            <div class="w-10 h-10 bg-gray-200 group-hover:bg-primary-100 rounded-lg flex items-center justify-center mr-3 flex-shrink-0 transition-colors">
+                                <i class="fas fa-cloud text-gray-500 group-hover:text-primary-500 transition-colors"></i>
                             </div>
                             <div class="min-w-0 flex-1">
-                                <h3 class="font-medium text-gray-900 truncate">{{ res.Key }}</h3>
+                                <h3 class="font-medium text-gray-900 truncate text-sm">{{ download.Type }}</h3>
+                                {{ if download.Password != "" }}
+                                <p class="text-xs text-gray-500 mt-0.5">
+                                    <i class="fas fa-key mr-1 opacity-60"></i>{{ download.Password }}
+                                </p>
+                                {{ else }}
+                                <p class="text-xs text-gray-400 mt-0.5">无密码</p>
+                                {{ end }}
                             </div>
                         </div>
+                        <a href="/download/{{ download.Slug }}?type={{ download.Type }}" 
+                           target="_blank"
+                           class="ml-3 flex-shrink-0 inline-flex items-center px-4 py-2 bg-primary-500 text-white text-sm font-medium rounded-lg hover:bg-primary-600 transition-colors shadow-sm hover:shadow">
+                            <i class="fas fa-download mr-1.5"></i>下载
+                        </a>
                     </div>
                     {{ end }}
                 </div>
@@ -118,28 +113,38 @@
 
         <!-- Sidebar -->
         <aside class="w-full lg:w-80 flex-shrink-0">
-            <!-- Article Info Card -->
-            <div class="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 mb-6 sticky top-24">
+            <!-- Software Info Card -->
+            <div class="bg-white rounded-2xl shadow-sm border border-gray-100 mb-6 sticky top-24 overflow-hidden">
                 {{ if Data.Thumbnail != "" }}
-                <div class="mb-4">
-                    <img src="{{ Data.Thumbnail }}" alt="{{ Data.Title }}" class="w-full h-48 object-cover rounded-xl">
+                <div class="relative">
+                    <img src="{{ Data.Thumbnail }}" alt="{{ Data.Title }}" class="w-full h-40 object-cover">
+                    <div class="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent"></div>
                 </div>
                 {{ end }}
                 
-                <div class="space-y-3">
-                    <div class="flex items-center text-sm text-gray-600">
-                        <i class="fas fa-hashtag w-5 text-primary-500"></i>
-                        <span>文章ID: {{ Data.ID }}</span>
+                <div class="p-5">
+                    <!-- 软件信息 -->
+                    {{ if len(Data.SidebarInfo) > 0 }}
+                    <div class="space-y-3 mb-5">
+                        {{ range i, info := Data.SidebarInfo }}
+                        <div class="flex items-center justify-between py-2 border-b border-gray-100 last:border-0">
+                            <div class="flex items-center text-gray-500 text-sm">
+                                <i class="{{ info.Icon }} w-4 mr-2 text-primary-500"></i>
+                                <span>{{ info.Label }}</span>
+                            </div>
+                            <span class="text-sm font-medium text-gray-900">{{ info.Value }}</span>
+                        </div>
+                        {{ end }}
                     </div>
-                    <div class="flex items-center text-sm text-gray-600">
-                        <i class="fas fa-link w-5 text-primary-500"></i>
-                        <span class="truncate">slug: {{ Data.Slug }}</span>
-                    </div>
-                    {{ if Data.Keywords != "" }}
-                    <div class="flex items-start text-sm text-gray-600">
-                        <i class="fas fa-key w-5 text-primary-500 mt-0.5"></i>
-                        <span class="flex-1">{{ Data.Keywords }}</span>
-                    </div>
+                    {{ end }}
+
+                    <!-- 下载按钮 -->
+                    {{ if len(Data.DownloadList) > 0 }}
+                    <a href="#download-section" 
+                       class="w-full inline-flex items-center justify-center px-6 py-3 bg-gradient-to-r from-primary-500 to-blue-500 text-white font-medium rounded-xl hover:from-primary-600 hover:to-blue-600 transition-all shadow-md hover:shadow-lg hover:-translate-y-0.5">
+                        <i class="fas fa-download mr-2"></i>
+                        立即下载
+                    </a>
                     {{ end }}
                 </div>
             </div>
@@ -147,12 +152,12 @@
             <!-- Related Articles -->
             {{ relatedArticles := Article().Limit(5).Order("views desc").ListByCategoryID(Data.CategoryID) }}
             {{ if len(relatedArticles) > 0 }}
-            <div class="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 mb-6">
-                <h3 class="text-lg font-bold text-gray-900 mb-4 flex items-center">
+            <div class="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 mb-6">
+                <h3 class="text-base font-bold text-gray-900 mb-4 flex items-center">
                     <i class="fas fa-fire text-orange-500 mr-2"></i>
                     相关推荐
                 </h3>
-                <div class="space-y-3">
+                <div class="space-y-2">
                     {{ range i, v := relatedArticles }}
                     {{ if v.ID != Data.ID }}
                     <a href="{{ v.URL() }}" class="block p-3 bg-gray-50 rounded-lg hover:bg-primary-50 transition-colors">
@@ -171,8 +176,8 @@
             <!-- Tag Cloud -->
             {{ tagCloud := Widget.TagCloud() }}
             {{ if len(tagCloud) > 0 }}
-            <div class="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-                <h3 class="text-lg font-bold text-gray-900 mb-4 flex items-center">
+            <div class="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
+                <h3 class="text-base font-bold text-gray-900 mb-4 flex items-center">
                     <i class="fas fa-tags text-primary-500 mr-2"></i>
                     标签云
                 </h3>
