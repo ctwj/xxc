@@ -27,6 +27,14 @@ func (r *Router) RegisterHome(route fiber.Router) {
 	sitemap.Get("/tag.xml", middleware.Cache, controller.Sitemap.TagXML).Name("sitemap")
 	sitemap.Get("/tag.txt", middleware.Cache, controller.Sitemap.TagTXT).Name("sitemap")
 
+	// RSS/Atom 订阅
+	route.Get("/rss.xml", controller.RSS.RSS).Name("rss")
+	route.Get("/atom.xml", controller.RSS.Atom).Name("atom")
+
+	// llms.txt 和 API 端点
+	route.Get("/llms.txt", controller.LLMs.LLMsTxt).Name("llms")
+	route.Get("/api.json", controller.LLMs.API).Name("api")
+
 	// home
 	route.Get("/", middleware.Cache, middleware.MinifyCode, controller.HomeIndex).Name("home")
 	// search (no cache: keyword in query string)

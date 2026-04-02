@@ -27,6 +27,7 @@ type configHandle struct {
 	Theme    *entity.Theme
 	Template *entity.Template
 	Sitemap  *entity.Sitemap
+	AISEO    *entity.AISEO
 }
 
 func newConfigHandle() *configHandle {
@@ -38,5 +39,6 @@ func newConfigHandle() *configHandle {
 		Theme:    config.Config.Theme,
 		Template: config.Config.Template,
 		Sitemap:  config.Config.Sitemap,
+		AISEO:    config.Config.AISEO,
 	}
 }

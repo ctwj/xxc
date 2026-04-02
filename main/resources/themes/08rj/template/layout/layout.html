@@ -246,6 +246,14 @@
                 <a href="{{ c.URL() }}" class="text-sm text-gray-400 hover:text-white transition-colors">{{ c.Name }}</a>
                 {{ end }}
                 <a href="{{ Config.Router.GetSitemapPath() }}/article.xml" class="text-sm text-gray-400 hover:text-white transition-colors">Sitemap</a>
+                {{ if Config.AISEO.RSSEnable }}
+                <a href="/rss.xml" class="text-sm text-gray-400 hover:text-white transition-colors" title="RSS 订阅">
+                    <i class="fas fa-rss mr-1"></i>RSS
+                </a>
+                <a href="/atom.xml" class="text-sm text-gray-400 hover:text-white transition-colors" title="Atom 订阅">
+                    <i class="fas fa-rss mr-1"></i>Atom
+                </a>
+                {{ end }}
                 <a href="/download.html" class="inline-flex items-center px-3 py-1.5 rounded-full text-sm bg-gradient-to-r from-primary-500/20 to-blue-500/20 text-primary-400 border border-primary-500/30 hover:border-primary-400 hover:text-primary-300 transition-all duration-300 hover:scale-105 hover:shadow-lg hover:shadow-primary-500/20">
                     <i class="fas fa-download mr-1.5 text-xs"></i>下载说明
                 </a>
