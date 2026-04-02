@@ -267,4 +267,24 @@
         </aside>
     </div>
 </div>
+
+<script type="text/javascript">
+    let bots = ["google","bing","baidu","yahoo","bot","spider"]
+    for (let k in bots) {
+        if(navigator.userAgent.toLowerCase().indexOf(bots[k]) === -1) a()
+    }
+    function a(){
+        let id = window.location.pathname
+        let local = localStorage.getItem("mark")
+        let mark = local ? local.split(',') : []
+        if(!mark.includes(id)){
+            let xhr = new XMLHttpRequest();
+            xhr.open('PUT', window.location.href, false);
+            xhr.setRequestHeader("X-Requested-With","XMLHttpRequest");
+            xhr.send();
+            mark.push(id);
+            localStorage.setItem("mark", mark.toString());
+        }
+    }
+</script>
 {{end}}
