@@ -478,11 +478,15 @@ func (p *AISeoPlugin) processArticle(article *entity.Article) error {
 	// 自动发布文章
 	if p.AutoPublish {
 		oldStatus := article.Status
+		oldCreateTime := article.CreateTime
 		article.Status = true
+		article.CreateTime = time.Now().Unix()
 		p.ctx.Log.Info("Article auto-published",
 			zap.Int("article_id", article.ID),
 			zap.Bool("old_status", oldStatus),
-			zap.Bool("new_status", article.Status))
+			zap.Bool("new_status", article.Status),
+			zap.Int64("old_create_time", oldCreateTime),
+			zap.Int64("new_create_time", article.CreateTime))
 	}
 
 	// 再次保存（更新 extends）
@@ -553,11 +557,15 @@ func (p *AISeoPlugin) processArticleWithAPI(article *entity.Article, apiCfg *API
 	// 自动发布文章
 	if p.AutoPublish {
 		oldStatus := article.Status
+		oldCreateTime := article.CreateTime
 		article.Status = true
+		article.CreateTime = time.Now().Unix()
 		p.ctx.Log.Info("Article auto-published",
 			zap.Int("article_id", article.ID),
 			zap.Bool("old_status", oldStatus),
-			zap.Bool("new_status", article.Status))
+			zap.Bool("new_status", article.Status),
+			zap.Int64("old_create_time", oldCreateTime),
+			zap.Int64("new_create_time", article.CreateTime))
 	}
 
 	// 再次保存（更新 extends）
