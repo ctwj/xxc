@@ -16,6 +16,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/panjf2000/ants/v2"
@@ -644,8 +645,17 @@ func (p *AISeoPlugin) parseIntegratedResponse(content string) (*IntegratedRespon
 			zap.String("fixed_preview", truncateText(fixedJsonStr, 200)))
 	}
 
+	// 清理无效的 UTF-8 字符
+	// AI 可能返回包含无效 UTF-8 字符（如替换字符 \uFFFD）的响应
+	cleanedJsonStr := cleanInvalidUTF8(fixedJsonStr)
+	if cleanedJsonStr != fixedJsonStr {
+		p.ctx.Log.Debug("Cleaned invalid UTF-8 characters in JSON",
+			zap.String("original_preview", truncateText(fixedJsonStr, 200)),
+			zap.String("cleaned_preview", truncateText(cleanedJsonStr, 200)))
+	}
+
 	var resp IntegratedResponse
-	if err := json.Unmarshal([]byte(fixedJsonStr), &resp); err != nil {
+	if err := json.Unmarshal([]byte(cleanedJsonStr), &resp); err != nil {
 		// 详细记录 JSON 解析错误
 		p.ctx.Log.Error("Failed to parse integrated response JSON",
 			zap.Error(err),
@@ -874,6 +884,12 @@ func (p *AISeoPlugin) buildIntegratedPrompt(article *entity.Article, categoryLis
 
 改写后的内容长度必须比原文更长，不能删除原文的任何功能或特点！
 
+【图片保留要求 - 非常重要！！！】
+- 如果原文包含任何图片（<img> 标签），必须原样保留，不能删除或修改
+- 图片是文章的重要组成部分，删除图片会影响用户体验和 SEO 效果
+- 保留图片的 src、alt、width、height 等所有属性
+- 绝对禁止删除任何图片！
+
 【原文结构分析】
 原文通常包含以下部分：
 1. 开篇介绍
@@ -903,21 +919,39 @@ func (p *AISeoPlugin) buildIntegratedPrompt(article *entity.Article, categoryLis
 原文有3个功能点，改写后只剩1段概括 -> 这是错误的！
 
 【正确改写示例】
+
 原文2个功能点 -> 改写后必须是2个独立的<p>段落，每个段落扩展说明
 
+
+
 【HTML 格式要求】
+
 - 每个段落用独立的 <p> 标签包裹
+
 - 小标题使用 <h3> 标签
-- 保留原文中的图片标签不变
+
+- 保留原文中的所有图片标签（<img> 标签必须原样保留）
+
 - 禁止使用 <br/> 标签
 
+
+
 【绝对禁止】
+
+- 禁止删除或修改原文中的任何图片
+
 - 禁止合并多个功能点到一个段落
+
 - 禁止删除原文的任何功能或特点
+
 - 禁止使内容变少
+
 - 禁止复制原文的句子
+
 - 禁止使用 emoji 表情符号
+
 - 禁止使用 Markdown 格式`)
+
 	}
 
 	if p.EnableTags {
@@ -942,6 +976,40 @@ func (p *AISeoPlugin) buildIntegratedPrompt(article *entity.Article, categoryLis
 
 	promptBuilder.WriteString(strings.Join(fields, ",\n"))
 	promptBuilder.WriteString("\n}\n```\n\n")
+
+	// 添加返回示例
+	promptBuilder.WriteString("【返回示例】\n请严格按照以下 JSON 格式返回结果，确保字段名称和类型完全匹配：\n```json\n{\n")
+
+	// 根据启用的功能添加示例字段
+	exampleFields := []string{}
+	if p.EnableTitleOptimize {
+		exampleFields = append(exampleFields, `  "title": "微信WeChat v4.1.8.68 多开防撤回绿色版下载"`)
+	}
+	if p.EnableCategoryRecommend && categoryList != "" {
+		exampleFields = append(exampleFields, `  "category": "应用软件"`)
+	}
+	if p.EnableKeywords {
+		exampleFields = append(exampleFields, `  "keywords": "微信多开, 微信防撤回, 微信绿色版, 微信PC版多开"`)
+	}
+	if p.EnableDescription {
+		exampleFields = append(exampleFields, `  "description": "微信WeChat v4.1.8.68多开防撤回绿色版，支持多账号同时登录、消息防撤回、消息提示功能。免费绿色版下载。"`)
+	}
+	if p.EnableRewrite {
+		exampleFields = append(exampleFields, `  "content": "<p>微信 (WeChat) 是腾讯公司推出的即时通讯社交软件...</p><h3>软件功能</h3><p>...</p><img src=\"https://example.com/image.jpg\"/>"`)
+	}
+	if p.EnableTags {
+		exampleFields = append(exampleFields, `  "tags": "微信多开, 微信防撤回, 绿色版"`)
+	}
+
+	for i, field := range exampleFields {
+		promptBuilder.WriteString(field)
+		if i < len(exampleFields)-1 {
+			promptBuilder.WriteString(",\n")
+		}
+		promptBuilder.WriteString("\n")
+	}
+	promptBuilder.WriteString("}\n```\n")
+	promptBuilder.WriteString("注意：content 字段中必须保留原文的所有图片标签（如 <img src=\"...\"/>）！\n\n")
 
 	// 添加各功能的详细要求
 	promptBuilder.WriteString("各功能优化要求：\n")
@@ -2717,6 +2785,24 @@ func fixInvalidUnicodeEscapes(jsonStr string) string {
 	// 例如: \U1F4A -> \u1F4A
 	re := regexp.MustCompile(`\\U([0-9A-Fa-f]{4})`)
 	return re.ReplaceAllString(jsonStr, `\\u$1`)
+}
+
+// cleanInvalidUTF8 清理字符串中的无效 UTF-8 字符
+// AI 可能返回包含无效 UTF-8 字符（如替换字符 \uFFFD）的响应
+// 这些字符会导致 JSON 解析失败
+func cleanInvalidUTF8(s string) string {
+	if !utf8.ValidString(s) {
+		var buf bytes.Buffer
+		for _, r := range s {
+			if r != utf8.RuneError {
+				buf.WriteRune(r)
+			} else {
+				buf.WriteByte(' ')
+			}
+		}
+		return buf.String()
+	}
+	return s
 }
 
 // getJsonErrorContext 获取 JSON 错误位置附近的内容，用于调试
