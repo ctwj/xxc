@@ -192,9 +192,18 @@ export default {
     QuarkCloudTransfer:'夸克网盘转存',
     download_limit:'资源下载次数限制',
     GnDownSpider:'GnDown爬虫',
+    PushToBaidu:'百度推送',
     AISeoPlugin:'SEO插件',
     ExternalLinkPlugin:'外链插件',
     DirectLinkDownload:'直链下载转存',
+
+    // PushToBaidu 插件配置
+    enable_on_create:'创建时推送',
+    enable_on_update:'更新时推送',
+    api_url:'API地址',
+    api_url_placeholder:'请输入百度推送API地址',
+    cron_settings:'定时任务设置',
+    cron_within_hours:'处理过去几小时内的文章',
 
 
 

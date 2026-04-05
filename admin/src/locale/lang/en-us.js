@@ -192,8 +192,17 @@ export default {
     QuarkCloudTransfer:'Quark Cloud Transfer',
     download_limit:'Download Limit',
     GnDownSpider:'GnDown Spider',
+    PushToBaidu:'Baidu Push',
     AISeoPlugin:'SEO Plugin',
     DirectLinkDownload:'Direct Link Download',
+
+    // PushToBaidu plugin config
+    enable_on_create:'Push on Create',
+    enable_on_update:'Push on Update',
+    api_url:'API URL',
+    api_url_placeholder:'Enter Baidu Push API URL',
+    cron_settings:'Cron Settings',
+    cron_within_hours:'Process articles within past hours',
 
 
     wangEditor:{
