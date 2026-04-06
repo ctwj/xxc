@@ -5,24 +5,37 @@
 
   <a-tabs type="line" default-active-key="functions">
     <a-tab-pane key="functions" title="功能开关">
-      <!-- 整合模式 -->
+      <!-- 整合模式 - 强制启用 -->
       <div class="mb-3 p-3 bg-blue-50 rounded-lg border border-blue-100">
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-2">
+            <a-tag color="blue">必选</a-tag>
             <span class="text-sm font-medium text-blue-700">整合模式</span>
-            <a-tooltip content="开启后，将所有启用的功能合并为一个 AI 请求，大幅减少 API 调用次数">
+            <a-tooltip content="自动启用，将所有功能合并为一个 AI 请求，大幅减少 API 调用次数">
               <icon-question-circle class="text-blue-400 text-xs" />
             </a-tooltip>
           </div>
-          <a-switch type="round" v-model="data.enable_integrated_mode" size="small" />
+          <a-tag color="green">已启用</a-tag>
         </div>
         <div class="text-xs text-blue-500 mt-1">
-          <template v-if="data.enable_integrated_mode">
-            已启用：一次请求处理所有功能，节省 Token
-          </template>
-          <template v-else>
-            已关闭：逐个功能调用 AI，处理更精细
-          </template>
+          已启用：一次请求处理所有功能，节省 Token
+        </div>
+      </div>
+
+      <!-- 百度搜索意图分析 - 强制启用 -->
+      <div class="mb-3 p-3 bg-green-50 rounded-lg border border-green-100">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <a-tag color="blue">必选</a-tag>
+            <span class="text-sm font-medium text-green-700">百度搜索意图分析</span>
+            <a-tooltip content="调用百度推荐词 API 分析用户搜索意图，优化文章内容更符合用户需求">
+              <icon-question-circle class="text-green-400 text-xs" />
+            </a-tooltip>
+          </div>
+          <a-tag color="green">已启用</a-tag>
+        </div>
+        <div class="text-xs text-green-500 mt-1">
+          自动分析用户搜索意图，优化标题、描述和关键词
         </div>
       </div>
 

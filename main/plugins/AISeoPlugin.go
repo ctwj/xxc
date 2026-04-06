@@ -5,12 +5,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"moss/domain/core/entity"
 	"moss/domain/core/repository/context"
 	"moss/domain/core/service"
 	"moss/domain/core/vo"
 	pluginEntity "moss/domain/support/entity"
 	"moss/infrastructure/utils/request"
+	"net/url"
 	"regexp"
 	"strings"
 	"sync"
@@ -788,19 +790,117 @@ func (p *AISeoPlugin) generateSEOContent(article *entity.Article) (*AISeoResult,
 }
 
 // buildIntegratedPrompt 构建整合模式的提示词
-func (p *AISeoPlugin) buildIntegratedPrompt(article *entity.Article, categoryList string) string {
+// baiduSuggestions: 百度推荐的用户搜索意图列表
+func (p *AISeoPlugin) buildIntegratedPrompt(article *entity.Article, categoryList string, baiduSuggestions []string) string {
 	var promptBuilder strings.Builder
 
 	promptBuilder.WriteString("你是一个专业的 SEO 优化专家。请对以下文章进行全面的 SEO 优化处理。\n\n")
 	promptBuilder.WriteString(fmt.Sprintf("文章标题：%s\n", article.Title))
 	promptBuilder.WriteString(fmt.Sprintf("文章内容：\n%s\n\n", truncateText(article.Content, 2000)))
 
+	// 添加百度搜索建议（用户搜索意图）
+	if len(baiduSuggestions) > 0 {
+		promptBuilder.WriteString("【用户搜索意图参考】（来自百度推荐）\n")
+		maxSuggestions := 8
+		if len(baiduSuggestions) > maxSuggestions {
+			baiduSuggestions = baiduSuggestions[:maxSuggestions]
+		}
+		for i, sug := range baiduSuggestions {
+			promptBuilder.WriteString(fmt.Sprintf("%d. %s\n", i+1, sug))
+		}
+		promptBuilder.WriteString("\n")
+		promptBuilder.WriteString(`
+【搜索意图智能决策系统（必须执行，内部使用不输出）】
+
+一、搜索意图分类（必须先执行）
+
+将所有搜索意图自动分类为：
+
+- 下载类（包含：下载 / 免费 / 安装 / 绿色版 / 破解版）
+- 教程类（包含：怎么 / 如何 / 使用 / 教程）
+- 问题类（包含：打不开 / 失败 / 错误 / 无法使用）
+- 对比类（包含：哪个好 / 对比 / 区别）
+- 其他类
+
+二、搜索意图质量评分（必须执行）
+
+为每个搜索意图评估质量（高 / 中 / 低），评估标准：
+
+高价值搜索词（优先使用）：
+- 包含“下载 / 免费 / 最新 / 官方 / 中文版”
+- 搜索意图明确（如：xxx下载、xxx怎么用）
+- 与软件强相关
+
+中价值搜索词：
+- 功能描述类（如：xxx功能、xxx特点）
+
+低价值搜索词（可忽略）：
+- 含义模糊
+- 与当前软件不强相关
+- 过于宽泛
+
+三、搜索意图筛选（关键）
+
+- 最终只选择 4-6 个“高价值 + 高相关”的搜索意图
+- 自动丢弃低质量或不相关搜索词
+- 优先保留不同类型（下载 / 教程 / 问题）
+
+四、搜索意图分配策略（核心）
+
+根据分类结果，必须按以下策略使用：
+
+1. 标题（最高优先级）：
+- 必须使用 1 个“下载类”或“高价值搜索意图”
+- 优先选择点击率最高的关键词
+
+2. Description：
+- 使用 1 个下载类 + 1 个教程类搜索意图
+- 保证自然流畅
+
+3. Keywords：
+- 覆盖所有选中的搜索意图（4-6个）
+- 可适当扩展语义相近词
+
+4. H3 小标题：
+- 至少 2 个使用“教程类”或“问题类”搜索意图
+- 优先使用完整短语
+
+5. FAQ：
+- 至少 2 个问题直接使用“问题类搜索意图”
+- 必须符合真实用户搜索习惯
+
+五、搜索意图融合要求（非常重要）
+
+- 所有搜索意图必须自然融入内容
+- 禁止生硬拼接关键词
+- 优先保证用户阅读体验
+- 可对搜索意图进行轻微语义调整（但保持原意）
+
+六、兜底策略（防止异常）
+
+如果搜索意图不足或质量较低：
+
+- 自动基于标题生成合理搜索意图
+- 自动补充“下载 / 使用 / 教程 / 常见问题”类关键词
+
+`)
+	}
+
 	if p.EnableCategoryRecommend && categoryList != "" {
 		promptBuilder.WriteString(fmt.Sprintf("可选分类列表：\n%s\n\n", categoryList))
 	}
 
 	// 构建需要返回的字段说明
-	promptBuilder.WriteString("请根据以下启用的功能，返回 JSON 格式的结果：\n```json\n{\n")
+	promptBuilder.WriteString(`【执行流程（必须按顺序执行）】
+步骤1：提取核心关键词（仅内部使用，不输出）
+步骤2：生成标题、描述、关键词
+步骤3：进行内容改写（使用步骤1的关键词）
+兼顾主流搜索引擎SEO策略（百度/Bing/Google）
+【注意】内容改写的重要性低于标题、关键词、描述生成
+请根据以下启用的功能，返回 JSON 格式的结果：
+（只返回JSON，不要额外内容）
+`)
+	promptBuilder.WriteString("{\n")
 
 	fields := []string{}
 	requirements := []string{}
@@ -816,6 +916,11 @@ func (p *AISeoPlugin) buildIntegratedPrompt(article *entity.Article, categoryLis
 5. 符合用户搜索习惯，针对目标用户群体
 6. 保留软件名称和版本号（如果有）
 7. 体现内容独特性和价值
+
+【多搜索引擎标题优化补充要求】
+- 优先包含 2-3 个核心关键词
+- 允许合理重复1次核心关键词（提高匹配度）
+- 标题前 15 个字符必须出现主关键词
 
 优化策略建议：
 - 软件类：软件名 + 版本号 + 核心功能 + 特色（如：便携版/绿色版/破解版）
@@ -833,13 +938,19 @@ func (p *AISeoPlugin) buildIntegratedPrompt(article *entity.Article, categoryLis
 	}
 
 	if p.EnableKeywords {
-		fields = append(fields, fmt.Sprintf(`  "keywords": "关键词1, 关键词2, 关键词3"`, p.MinKeywords, p.MaxKeywords, p.MinLongTail))
+		fields = append(fields, `  "keywords": "关键词1, 关键词2, 关键词3"`)
+
 		requirements = append(requirements, fmt.Sprintf(`
-【关键词提取要求】
-关键词提取策略：
-1. 核心关键词（1-2个）：文章主题最核心的词汇，搜索量大、竞争度适中
-2. 长尾关键词（2-3个）：由3-5个词组成的具体短语，搜索意图明确，转化率高
-3. 相关关键词（1-3个）：与主题相关的热门搜索词，拓展覆盖面
+【多引擎关键词策略】
+- 核心关键词：1-2个
+- 长尾关键词：%d个左右
+- 关键词总数：%d-%d个
+- 自然出现，不强制次数
+
+优化要求：
+- 必须覆盖“下载 / 免费 / 中文 / 破解版”等用户搜索词（如适用）
+- 允许部分关键词语义重复
+- 同时保证语句自然（适配Google）
 
 关键词选择原则：
 - 优先选择用户实际搜索的词汇，而非专业术语
@@ -850,7 +961,7 @@ func (p *AISeoPlugin) buildIntegratedPrompt(article *entity.Article, categoryLis
 
 数量要求：
 - 总数 %d 到 %d 个关键词
-- 其中至少 %d 个长尾关键词（3-5个词组成）
+- 其中至少 %d 个长尾关键词
 - 关键词之间用英文逗号分隔`, p.MinKeywords, p.MaxKeywords, p.MinLongTail))
 	}
 
@@ -868,6 +979,10 @@ func (p *AISeoPlugin) buildIntegratedPrompt(article *entity.Article, categoryLis
 5. 语句流畅：避免关键词堆砌，保持自然通顺
 6. 差异化：体现文章与竞品的区别
 
+- 前30个字符必须出现核心关键词
+- 包含“下载 / 免费 / 最新”等高点击词
+- 语句必须自然流畅
+
 描述结构建议：
 - 开头：核心关键词 + 价值主张
 - 中间：核心功能/特点/优势
@@ -880,13 +995,21 @@ func (p *AISeoPlugin) buildIntegratedPrompt(article *entity.Article, categoryLis
 	if p.EnableRewrite {
 		fields = append(fields, `  "content": "改写后的完整文章内容"`)
 		requirements = append(requirements, `
+【执行优先级（必须遵守）】
+1. JSON格式正确
+2. 不得丢失图片
+3. 结构完整
+4. SEO优化
+5. 文案优化
+
+最终只输出 JSON 结果
+
 【内容改写要求 - 核心原则：只能扩展，不能缩减！】
 
 改写后的内容长度必须比原文更长，不能删除原文的任何功能或特点！
 
 【图片保留要求 - 非常重要！！！】
 - 如果原文包含任何图片（<img> 标签），必须原样保留，不能删除或修改
-- 图片是文章的重要组成部分，删除图片会影响用户体验和 SEO 效果
 - 保留图片的 src、alt、width、height 等所有属性
 - 绝对禁止删除任何图片！
 
@@ -903,7 +1026,7 @@ func (p *AISeoPlugin) buildIntegratedPrompt(article *entity.Article, categoryLis
 二、软件功能部分（最重要）：
 - 原文中每个功能点（用<br/>分隔的）都必须改写成独立的段落
 - 不能合并多个功能点到一个段落
-- 每个功能点要扩展说明，写2-3句话
+- 每个功能独立成段，并适当扩展说明
 - 示例：原文有5个功能点，改写后必须有5个独立的<p>段落
 
 三、软件特点部分：
@@ -922,7 +1045,11 @@ func (p *AISeoPlugin) buildIntegratedPrompt(article *entity.Article, categoryLis
 
 原文2个功能点 -> 改写后必须是2个独立的<p>段落，每个段落扩展说明
 
+【内容差异化要求（避免重复收录问题）】
 
+- 每篇文章必须有不同的表达方式和结构细节
+- 避免固定句式重复出现
+- 开头段落不得使用统一模板句
 
 【HTML 格式要求】
 
@@ -934,28 +1061,87 @@ func (p *AISeoPlugin) buildIntegratedPrompt(article *entity.Article, categoryLis
 
 - 禁止使用 <br/> 标签
 
+【多搜索引擎内容SEO强化要求】
 
+1. 首段优化（极其重要）：
+- 前100字优先包含核心关键词2-3次
+- 包含至少1个长尾关键词
+- 明确“下载 / 功能 / 使用场景”
+
+2. 标题结构优化：
+推荐包含以下内容模块（可灵活调整顺序或命名）：
+  - 软件介绍
+  - 功能说明
+  - 使用技巧
+  - 常见问题
+
+3. 关键词分布：
+- 核心关键词需自然出现 3-6 次
+- 优先语义相关表达（同义词替换）
+- 禁止机械重复关键词
+- 小标题（H3）中优先包含关键词
+- 每张图片 alt 优先包含：
+  - 软件名称
+  - 1个核心关键词（如：下载 / 编辑器）
+
+4. FAQ优化（适配百度/Bing）：
+- 至少3个问句
+- 问题需符合真实用户搜索习惯，可自然包含关键词或同义表达
+（如：XXX怎么下载？XXX免费吗？）
+
+5. 语义优化（适配Google）：
+- 必须使用2-3个同义词或相关表达
+（如：PDF编辑器 = PDF处理工具 / PDF修改软件）
+- 避免全文只重复同一个关键词
 
 【绝对禁止】
-
 - 禁止删除或修改原文中的任何图片
-
 - 禁止合并多个功能点到一个段落
-
 - 禁止删除原文的任何功能或特点
-
 - 禁止使内容变少
-
 - 禁止复制原文的句子
-
 - 禁止使用 emoji 表情符号
+- 禁止使用 Markdown 格式
+- 禁止成真实下载链接
+- 禁止伪造URL地址
 
-- 禁止使用 Markdown 格式`)
+【最终SEO目标】
+优化结果必须同时满足：
+- 百度：关键词匹配 + 收录快
+- Bing：关键词覆盖 + 标题点击率高
+- Google：内容自然 + 结构清晰 + 用户价值高
+
+【反过度优化要求（非常重要）】
+
+- 禁止关键词堆砌
+- 禁止不自然重复
+- 优先保证内容可读性
+- 以用户体验优先，而非关键词数量
+
+【SEO质量校验（必须满足）】
+
+生成内容必须满足：
+1. 核心关键词及其语义变体需在全文自然出现
+2. 至少包含1个长尾关键词完整出现
+3. 至少包含3个H3标题
+4. 至少3个FAQ问题（包含关键词）
+5. 首段优先包含：
+  - 软件名称
+  - 优先包含“下载 / 获取 / 使用”等用户搜索意图词
+  - 表达可以自然变化，如：
+	- 下载
+	- 获取
+	- 安装
+	- 使用指南
+
+如果不满足，请自动优化后再输出
+
+优先保证：不影响阅读体验的前提下，最大化关键词覆盖`)
 
 	}
 
 	if p.EnableTags {
-		fields = append(fields, fmt.Sprintf(`  "tags": "标签1, 标签2, 标签3"`, p.MinTags, p.MaxTags))
+		fields = append(fields, `  "tags": "标签1, 标签2, 标签3"`)
 		requirements = append(requirements, fmt.Sprintf(`
 【标签生成要求】
 标签生成策略：
@@ -975,10 +1161,10 @@ func (p *AISeoPlugin) buildIntegratedPrompt(article *entity.Article, categoryLis
 	}
 
 	promptBuilder.WriteString(strings.Join(fields, ",\n"))
-	promptBuilder.WriteString("\n}\n```\n\n")
+	promptBuilder.WriteString("\n}")
 
 	// 添加返回示例
-	promptBuilder.WriteString("【返回示例】\n请严格按照以下 JSON 格式返回结果，确保字段名称和类型完全匹配：\n```json\n{\n")
+	promptBuilder.WriteString("【返回示例】\n请严格按照以下 JSON 格式返回结果，确保字段名称和类型完全匹配：{\n")
 
 	// 根据启用的功能添加示例字段
 	exampleFields := []string{}
@@ -989,7 +1175,7 @@ func (p *AISeoPlugin) buildIntegratedPrompt(article *entity.Article, categoryLis
 		exampleFields = append(exampleFields, `  "category": "应用软件"`)
 	}
 	if p.EnableKeywords {
-		exampleFields = append(exampleFields, `  "keywords": "微信多开, 微信防撤回, 微信绿色版, 微信PC版多开"`)
+		exampleFields = append(exampleFields, `  "keywords": "微信多开, 微信防撤回, 微信绿色版, 微信PC版多开, 微信多账号登录, 微信消息防撤回, 微信电脑版下载"`)
 	}
 	if p.EnableDescription {
 		exampleFields = append(exampleFields, `  "description": "微信WeChat v4.1.8.68多开防撤回绿色版，支持多账号同时登录、消息防撤回、消息提示功能。免费绿色版下载。"`)
@@ -1008,7 +1194,7 @@ func (p *AISeoPlugin) buildIntegratedPrompt(article *entity.Article, categoryLis
 		}
 		promptBuilder.WriteString("\n")
 	}
-	promptBuilder.WriteString("}\n```\n")
+	promptBuilder.WriteString("}")
 	promptBuilder.WriteString("注意：content 字段中必须保留原文的所有图片标签（如 <img src=\"...\"/>）！\n\n")
 
 	// 添加各功能的详细要求
@@ -1028,11 +1214,13 @@ func (p *AISeoPlugin) buildIntegratedPrompt(article *entity.Article, categoryLis
 }
 
 // generateSEOContentIntegrated 整合模式：一次 AI 请求生成所有 SEO 内容
-func (p *AISeoPlugin) generateSEOContentIntegrated(article *entity.Article, apiCfg *APIConfig) (*AISeoResult, error) {
+// baiduSuggestions: 百度推荐的用户搜索意图列表
+func (p *AISeoPlugin) generateSEOContentIntegrated(article *entity.Article, apiCfg *APIConfig, baiduSuggestions []string) (*AISeoResult, error) {
 	p.ctx.Log.Info("Starting integrated SEO content generation",
 		zap.Int("article_id", article.ID),
 		zap.String("title", article.Title),
-		zap.String("api_name", apiCfg.Name))
+		zap.String("api_name", apiCfg.Name),
+		zap.Int("baidu_suggestions_count", len(baiduSuggestions)))
 
 	result := &AISeoResult{}
 
@@ -1051,8 +1239,8 @@ func (p *AISeoPlugin) generateSEOContentIntegrated(article *entity.Article, apiC
 		}
 	}
 
-	// 构建整合提示词
-	prompt := p.buildIntegratedPrompt(article, categoryList)
+	// 构建整合提示词，传入百度搜索建议
+	prompt := p.buildIntegratedPrompt(article, categoryList, baiduSuggestions)
 
 	p.ctx.Log.Debug("Integrated prompt built",
 		zap.Int("article_id", article.ID),
@@ -1175,9 +1363,25 @@ func (p *AISeoPlugin) generateSEOContentIntegrated(article *entity.Article, apiC
 
 // generateSEOContentWithAPI 使用指定 API 配置生成 SEO 内容
 func (p *AISeoPlugin) generateSEOContentWithAPI(article *entity.Article, apiCfg *APIConfig) (*AISeoResult, error) {
-	// 如果启用整合模式，使用单次 AI 请求处理所有功能
-	if p.EnableIntegratedMode {
-		return p.generateSEOContentIntegrated(article, apiCfg)
+	// 强制使用整合模式
+	if true || p.EnableIntegratedMode {
+		// 1. AI 提取核心关键词
+		coreKeyword, err := p.extractCoreKeyword(article.Title, apiCfg)
+		if err != nil {
+			p.ctx.Log.Warn("Failed to extract core keyword", zap.Error(err))
+		}
+
+		// 2. 百度搜索意图分析
+		var baiduSuggestions []string
+		if coreKeyword != "" {
+			baiduSuggestions, err = p.getBaiduSuggestions(coreKeyword)
+			if err != nil {
+				p.ctx.Log.Warn("Failed to get Baidu suggestions", zap.Error(err))
+			}
+		}
+
+		// 3. 使用整合模式处理，传入搜索建议
+		return p.generateSEOContentIntegrated(article, apiCfg, baiduSuggestions)
 	}
 
 	// 否则使用原有的逐个处理流程
@@ -1580,25 +1784,6 @@ func (p *AISeoPlugin) rewriteContent(article *entity.Article, keywords []string)
 四、新增板块（必须添加）：
 - 常见问题（2-3个问答，每个问答独立段落）
 
-【错误示例 - 绝对禁止】
-
-原文：
-<p>游戏运行：支持ISO、CSO格式。<br/> 图形优化：支持高清渲染。<br/> 性能优化：支持多核处理器。</p>
-
-错误改写（禁止这样做）：
-<p>PPSSPP支持ISO、CSO格式，支持高清渲染和多核处理器优化。</p> 
-（这是错误的：合并了3个功能点，内容减少了）
-
-【正确改写示例】
-
-原文：
-<p>内存检测：运行多种内存测试。<br/> 错误报告：生成详细的错误报告。</p>
-
-正确改写（必须这样）：
-<p>内存检测功能是软件的核心能力。它采用多层次的测试算法，包括地址总线测试、数据线测试等。用户只需点击开始测试按钮，软件便会自动对内存进行全方位扫描。</p>
-<p>错误报告功能帮助用户快速定位问题。当检测到内存错误时，软件会记录错误的具体地址、错误类型和出现次数。用户可以将报告导出为文本文件。</p>
-（正确：2个功能点变成2个独立段落，内容扩展了）
-
 【HTML 格式要求】
 - 每个段落用独立的 <p> 标签包裹
 - 小标题使用 <h3> 标签
@@ -1992,25 +2177,6 @@ func (p *AISeoPlugin) rewriteContentWithAPI(article *entity.Article, keywords []
 
 四、新增板块（必须添加）：
 - 常见问题（2-3个问答，每个问答独立段落）
-
-【错误示例 - 绝对禁止】
-
-原文：
-<p>游戏运行：支持ISO、CSO格式。<br/> 图形优化：支持高清渲染。<br/> 性能优化：支持多核处理器。</p>
-
-错误改写（禁止这样做）：
-<p>PPSSPP支持ISO、CSO格式，支持高清渲染和多核处理器优化。</p> 
-（这是错误的：合并了3个功能点，内容减少了）
-
-【正确改写示例】
-
-原文：
-<p>内存检测：运行多种内存测试。<br/> 错误报告：生成详细的错误报告。</p>
-
-正确改写（必须这样）：
-<p>内存检测功能是软件的核心能力。它采用多层次的测试算法，包括地址总线测试、数据线测试等。用户只需点击开始测试按钮，软件便会自动对内存进行全方位扫描。</p>
-<p>错误报告功能帮助用户快速定位问题。当检测到内存错误时，软件会记录错误的具体地址、错误类型和出现次数。用户可以将报告导出为文本文件。</p>
-（正确：2个功能点变成2个独立段落，内容扩展了）
 
 【HTML 格式要求】
 - 每个段落用独立的 <p> 标签包裹
@@ -2829,4 +2995,116 @@ func getJsonErrorContext(jsonStr string, offset int64) string {
 		context = context[:errorPos] + ">>>ERROR_HERE<<<" + context[errorPos:]
 	}
 	return context
+}
+
+// BaiduSugResponse 百度推荐词 API 响应结构
+type BaiduSugResponse struct {
+	Q string `json:"q"`
+	G []struct {
+		Type string `json:"type"`
+		SA   string `json:"sa"`
+		Q    string `json:"q"`
+	} `json:"g"`
+}
+
+// getBaiduSuggestions 获取百度推荐词（用户搜索意图）
+func (p *AISeoPlugin) getBaiduSuggestions(keyword string) ([]string, error) {
+	if keyword == "" {
+		return nil, nil
+	}
+
+	// 构建百度推荐词 API URL
+	apiURL := fmt.Sprintf("https://www.baidu.com/sugrec?prod=pc&wd=%s", url.QueryEscape(keyword))
+
+	p.ctx.Log.Info("Fetching Baidu suggestions",
+		zap.String("keyword", keyword),
+		zap.String("url", apiURL))
+
+	// 发起请求
+	resp, err := request.New().Get(apiURL)
+	if err != nil {
+		p.ctx.Log.Warn("Failed to get Baidu suggestions", zap.String("keyword", keyword), zap.Error(err))
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	// 读取响应体
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		p.ctx.Log.Warn("Failed to read Baidu suggestions response", zap.Error(err))
+		return nil, err
+	}
+
+	p.ctx.Log.Debug("Baidu API raw response",
+		zap.String("keyword", keyword),
+		zap.String("response", string(body)))
+
+	// 解析 JSON
+	var sugResp BaiduSugResponse
+	if err := json.Unmarshal(body, &sugResp); err != nil {
+		p.ctx.Log.Warn("Failed to parse Baidu suggestions response",
+			zap.String("keyword", keyword),
+			zap.String("response", string(body)),
+			zap.Error(err))
+		return nil, err
+	}
+
+	p.ctx.Log.Debug("Baidu API parsed response",
+		zap.String("keyword", keyword),
+		zap.String("query", sugResp.Q),
+		zap.Int("items_count", len(sugResp.G)))
+
+	// 提取推荐词
+	var suggestions []string
+	for _, item := range sugResp.G {
+		p.ctx.Log.Debug("Baidu suggestion item",
+			zap.String("type", item.Type),
+			zap.String("sa", item.SA),
+			zap.String("q", item.Q))
+		if item.Q != "" {
+			suggestions = append(suggestions, item.Q)
+		}
+	}
+
+	p.ctx.Log.Debug("Baidu suggestions fetched",
+		zap.String("keyword", keyword),
+		zap.Int("count", len(suggestions)))
+
+	return suggestions, nil
+}
+
+// extractCoreKeyword 使用 AI 从标题提取核心关键词/软件名
+func (p *AISeoPlugin) extractCoreKeyword(title string, apiCfg *APIConfig) (string, error) {
+	if title == "" || apiCfg == nil {
+		return "", nil
+	}
+
+	p.ctx.Log.Info("Extracting core keyword from title",
+		zap.String("title", title))
+
+	prompt := fmt.Sprintf(`请从以下文章标题中提取核心关键词或软件名称。只返回一个最核心的关键词或软件名，不要包含其他内容。
+文章标题：%s
+
+请直接返回核心关键词，不要有任何解释或额外内容。`, title)
+
+	p.ctx.Log.Debug("Core keyword prompt",
+		zap.String("title", title),
+		zap.String("prompt", prompt))
+
+	response, err := p.callAIWithConfig(prompt, apiCfg)
+	if err != nil {
+		p.ctx.Log.Warn("Failed to extract core keyword", zap.Error(err))
+		return "", err
+	}
+
+	// 清理响应
+	keyword := strings.TrimSpace(response)
+	keyword = strings.Trim(keyword, "\"")
+
+	p.ctx.Log.Info("Core keyword extracted",
+		zap.String("title", title),
+		zap.String("raw_response", response),
+		zap.String("keyword", keyword))
+
+	return keyword, nil
 }
