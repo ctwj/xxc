@@ -47,7 +47,7 @@ func initPlugins() {
 		// plugins.NewGenerateDescription(),
 		plugins.NewPreBuildArticleCache(),
 		plugins.NewPushToBaidu(),
-		// plugins.NewPushToBing(),
+		plugins.NewPushToBing(),
 		plugins.NewMakeCarousel(),
 		plugins.NewPostStore(),
 		// plugins.NewDidiAuto(),
