@@ -118,6 +118,37 @@ func (w *Widget) TagCloud() (res []coreEntity.Tag) {
 		res, err = service.Tag.List(ctx)
 	}
 	log.ErrorShortcut("template widget error", err)
+	if len(res) == 0 {
+		return
+	}
+	// 按文章数量降序排序
+	type tagWithCount struct {
+		tag    coreEntity.Tag
+		count  int64
+	}
+	var tagsWithCount []tagWithCount
+	for _, tag := range res {
+		count, _ := service.Mapping.CountByTagID(tag.ID)
+		tagsWithCount = append(tagsWithCount, tagWithCount{tag: tag, count: count})
+	}
+	// 降序排序
+	for i := 0; i < len(tagsWithCount)-1; i++ {
+		for j := i + 1; j < len(tagsWithCount); j++ {
+			if tagsWithCount[j].count > tagsWithCount[i].count {
+				tagsWithCount[i], tagsWithCount[j] = tagsWithCount[j], tagsWithCount[i]
+			}
+		}
+	}
+	// 限制数量
+	limit := config.Config.Template.TagCloud.Limit
+	if len(tagsWithCount) > limit {
+		tagsWithCount = tagsWithCount[:limit]
+	}
+	// 转换回 Tag 切片
+	res = make([]coreEntity.Tag, len(tagsWithCount))
+	for i, tc := range tagsWithCount {
+		res[i] = tc.tag
+	}
 	return
 }
 

@@ -296,11 +296,19 @@ func (s *ArticleService) ListByTagID(ctx *context.Context, tagID int) (res []ent
 
 // ListByTagIds 根据标签ID调用文章列表
 func (s *ArticleService) ListByTagIds(ctx *context.Context, tagIds []int) (res []entity.ArticleBase, err error) {
-	ids, err := Mapping.ListArticleIdsByTagIds(ctx, tagIds)
+	if ctx == nil {
+		ctx = &context.Context{}
+	}
+	// 查询 mapping_tag 表获取文章ID，该表没有 status 字段，需要清除 Where 条件
+	mappingCtx := &context.Context{Limit: ctx.Limit}
+	ids, err := Mapping.ListArticleIdsByTagIds(mappingCtx, tagIds)
 	if err != nil {
 		return
 	}
-	res, err = s.ListByIds(context.NewContext(ctx.Limit, "id desc"), ids)
+	// 查询文章列表时保留 Where 条件（如状态过滤）
+	newCtx := context.NewContext(ctx.Limit, "id desc")
+	newCtx.Where = ctx.Where
+	res, err = s.ListByIds(newCtx, ids)
 	return
 }
 
