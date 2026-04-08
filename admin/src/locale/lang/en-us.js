@@ -204,6 +204,16 @@ export default {
     cron_settings:'Cron Settings',
     cron_within_hours:'Process articles within past hours',
 
+    // PushToSearchEngine plugin config
+    PushToSearchEngine:'Search Engine Push',
+    baidu_push_settings:'Baidu Push Settings',
+    bing_push_settings:'Bing Push Settings',
+    baidu_enable:'Enable Baidu Push',
+    bing_enable:'Enable Bing Push',
+    baidu_api_url_placeholder:'Enter Baidu Push API URL',
+    bing_api_key_placeholder:'Enter Bing API Key',
+    api_key:'API Key',
+
 
     wangEditor:{
         editor: {

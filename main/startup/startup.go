@@ -46,8 +46,9 @@ func initPlugins() {
 		plugins.NewDetectLinks(),
 		// plugins.NewGenerateDescription(),
 		plugins.NewPreBuildArticleCache(),
-		plugins.NewPushToBaidu(),
-		plugins.NewPushToBing(),
+		// plugins.NewPushToBaidu(),
+		// plugins.NewPushToBing(),
+		plugins.NewPushToSearchEngine(), // 统一的搜索引擎推送插件（百度+Bing）
 		plugins.NewMakeCarousel(),
 		plugins.NewPostStore(),
 		// plugins.NewDidiAuto(),

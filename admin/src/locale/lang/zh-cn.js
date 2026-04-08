@@ -205,6 +205,16 @@ export default {
     cron_settings:'定时任务设置',
     cron_within_hours:'处理过去几小时内的文章',
 
+    // PushToSearchEngine 插件配置
+    PushToSearchEngine:'搜索引擎推送',
+    baidu_push_settings:'百度推送设置',
+    bing_push_settings:'必应推送设置',
+    baidu_enable:'启用百度推送',
+    bing_enable:'启用必应推送',
+    baidu_api_url_placeholder:'请输入百度推送API地址',
+    bing_api_key_placeholder:'请输入必应API Key',
+    api_key:'API Key',
+
 
 
     wangEditor:{
