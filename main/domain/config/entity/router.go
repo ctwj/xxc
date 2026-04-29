@@ -24,6 +24,7 @@ type Router struct {
 	MinifyCode       bool         `json:"minify_code"`
 	ETag             bool         `json:"etag"`
 	PprofSecret      string       `json:"prof_secret"`
+	CORSOrigins      string       `json:"cors_origins"` // CORS 允许的源，多个用逗号分隔
 }
 
 const (

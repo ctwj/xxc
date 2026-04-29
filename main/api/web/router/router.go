@@ -42,6 +42,8 @@ func (r *Router) newFiber() *fiber.App {
 	app.Use(middleware.CatchPanicError)
 	// http log
 	app.Use(middleware.HttpLog)
+	// CORS - Enable for API access from frontend
+	app.Use(middleware.CORSConfig())
 	// ETag
 	if config.Config.Router.ETag {
 		app.Use(etag.New())
@@ -54,6 +56,9 @@ func (r *Router) newFiber() *fiber.App {
 
 	// admin
 	app.Route(config.Config.Router.GetAdminPath(), r.RegisterAdmin)
+
+	// API routes for headless CMS
+	RegisterAPIRoutes(app)
 
 	// home
 	app.Route("/", r.RegisterHome)
