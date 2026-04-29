@@ -1,4 +1,4 @@
-import { Article, Category, Tag, ApiResponse } from "@/types";
+import { Article, Category, Tag, ApiResponse, User, LikeType, LikeStatusResponse } from "@/types";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:9008";
 
@@ -43,7 +43,7 @@ class ApiClient {
       const error = await response.json().catch(() => ({
         message: "An error occurred",
       }));
-      throw new Error(error.message || `HTTP error! status: ${response.status}`);
+      throw new Error(error.message || error.error || `HTTP error! status: ${response.status}`);
     }
 
     return response.json();
@@ -107,15 +107,19 @@ class ApiClient {
   }
 
   // Auth methods
-  async login(username: string, password: string): Promise<{ success: boolean; user?: { username: string; role: string }; error?: string }> {
+  async login(username: string, password: string): Promise<{ success: boolean; user?: User; error?: string }> {
     return this.post("/api/auth/login", { username, password });
+  }
+
+  async register(username: string, email: string, password: string): Promise<{ success: boolean; user?: User; error?: string }> {
+    return this.post("/api/auth/register", { username, email, password });
   }
 
   async logout(): Promise<{ success: boolean }> {
     return this.post("/api/auth/logout");
   }
 
-  async getCurrentUser(): Promise<{ id: number; username: string; role: string }> {
+  async getCurrentUser(): Promise<User> {
     return this.get("/api/auth/me");
   }
 
@@ -130,6 +134,32 @@ class ApiClient {
 
   async removeFavorite(id: number): Promise<{ success: boolean }> {
     return this.delete(`/api/favorites/${id}`);
+  }
+
+  // Like methods
+  async setLike(articleId: number, type: LikeType): Promise<{ success: boolean }> {
+    return this.post("/api/likes", { articleId, type });
+  }
+
+  async getLikeStatus(articleId: number): Promise<LikeStatusResponse> {
+    return this.get(`/api/likes/status?articleId=${articleId}`);
+  }
+
+  async getLikes(): Promise<ApiResponse<{ id: number; articleId: number; type: number; article: Article }[]>> {
+    return this.get("/api/likes");
+  }
+
+  // View History methods
+  async recordView(articleId: number): Promise<{ success: boolean }> {
+    return this.post("/api/history", { articleId });
+  }
+
+  async getViewHistory(): Promise<ApiResponse<{ id: number; articleId: number; viewedAt: string; article: Article }[]>> {
+    return this.get("/api/history");
+  }
+
+  async clearViewHistory(): Promise<{ success: boolean }> {
+    return this.delete("/api/history");
   }
 }
 
@@ -153,6 +183,7 @@ export const tagApi = {
 
 export const authApi = {
   login: (username: string, password: string) => api.login(username, password),
+  register: (username: string, email: string, password: string) => api.register(username, email, password),
   logout: () => api.logout(),
   me: () => api.getCurrentUser(),
 };
@@ -161,4 +192,16 @@ export const favoriteApi = {
   list: () => api.getFavorites(),
   add: (articleId: number) => api.addFavorite(articleId),
   remove: (id: number) => api.removeFavorite(id),
+};
+
+export const likeApi = {
+  set: (articleId: number, type: LikeType) => api.setLike(articleId, type),
+  status: (articleId: number) => api.getLikeStatus(articleId),
+  list: () => api.getLikes(),
+};
+
+export const historyApi = {
+  record: (articleId: number) => api.recordView(articleId),
+  list: () => api.getViewHistory(),
+  clear: () => api.clearViewHistory(),
 };

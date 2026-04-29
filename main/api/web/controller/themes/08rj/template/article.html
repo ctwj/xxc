@@ -1,0 +1,290 @@
+{{extends "./layout/layout.html"}}
+
+{{block head()}}
+<!-- Article Open Graph -->
+<meta property="og:type" content="article" />
+<meta property="article:published_time" content="{{ Data.CreateTimeFormat }}" />
+{{ if Data.Thumbnail != "" }}
+<meta property="og:image" content="{{ Data.Thumbnail }}" />
+<meta name="twitter:image" content="{{ Data.Thumbnail }}" />
+{{ end }}
+<meta property="og:url" content="{{ Config.Site.URL }}{{ Page.Path }}" />
+
+<!-- Twitter Card -->
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="{{ Data.Title }}" />
+{{ if Data.Description != "" }}
+<meta name="twitter:description" content="{{ Data.Description }}" />
+<meta property="og:description" content="{{ Data.Description }}" />
+{{ end }}
+
+<!-- Software Application Schema with FAQ -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": ["Article", "SoftwareApplication"],
+  "headline": "{{ Data.Title }}",
+  "name": "{{ Data.Title }}",
+  "description": "{{ Data.Description }}",
+  "datePublished": "{{ Data.CreateTimeFormat }}",
+  "dateModified": "{{ Data.CreateTimeFormat }}",
+  "image": "{{ if Data.Thumbnail }}{{ Data.Thumbnail }}{{ end }}",
+  "url": "{{ Config.Site.URL }}{{ Page.Path }}",
+  "author": {
+    "@type": "Organization",
+    "name": "{{ Config.Site.Name }}"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "{{ Config.Site.Name }}",
+    "url": "{{ Config.Site.URL }}"
+  },
+  "mainEntityOfPage": {
+    "@type": "WebPage",
+    "@id": "{{ Config.Site.URL }}{{ Page.Path }}"
+  },
+  "articleSection": "{{ if Data.Category }}{{ Data.Category.Name }}{{ end }}",
+  "keywords": "{{ if len(Data.KeywordList) > 0 }}{{ range i, k := Data.KeywordList }}{{ if i > 0 }}, {{ end }}{{ k }}{{ end }}{{ end }}",
+  "wordCount": "{{ len(Data.Content) }}"
+}
+</script>
+
+<!-- BreadcrumbList Schema -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [{
+    "@type": "ListItem",
+    "position": 1,
+    "name": "首页",
+    "item": "{{ Config.Site.URL }}/"
+  }{{ if Data.Category }},{
+    "@type": "ListItem",
+    "position": 2,
+    "name": "{{ Data.Category.Name }}",
+    "item": "{{ Config.Site.URL }}{{ Data.Category.URL() }}"
+  }{{ end }},{
+    "@type": "ListItem",
+    "position": {{ if Data.Category }}3{{ else }}2{{ end }},
+    "name": "{{ Data.Title }}",
+    "item": "{{ Config.Site.URL }}{{ Page.Path }}"
+  }]
+}
+</script>
+{{end}}
+
+{{block main()}}
+{{ tags := Tag().Limit(10).ListByArticleID(Data.ID) }}
+{{ ancestors := Widget.Breadcrumb(Data.CategoryID) }}
+
+<div class="container mx-auto max-w-6xl">
+    <!-- Breadcrumb -->
+    <nav class="mb-6">
+        <ol class="flex items-center space-x-2 text-sm text-gray-500 flex-wrap">
+            <li><a href="/" class="hover:text-primary-600 transition-colors">首页</a></li>
+            {{ range i, v := ancestors }}
+            <li><i class="fas fa-chevron-right text-xs"></i></li>
+            <li>
+                <a href="{{ v.URL() }}" class="hover:text-primary-600 transition-colors">{{ v.Name }}</a>
+            </li>
+            {{ end }}
+        </ol>
+    </nav>
+
+    <div class="flex flex-col lg:flex-row gap-8">
+        <!-- Main Content -->
+        <article class="flex-1 min-w-0">
+            <!-- Article Header -->
+            <header class="bg-white rounded-2xl p-6 md:p-8 shadow-sm border border-gray-100 mb-6">
+                <h1 class="text-2xl md:text-3xl font-bold text-gray-900 mb-4 leading-tight">{{ Data.Title }}</h1>
+                
+                <!-- 发布时间和浏览量 -->
+                <div class="flex flex-wrap items-center gap-4 text-sm text-gray-500 mb-4">
+                    <span class="flex items-center">
+                        <i class="fas fa-calendar-alt mr-2 text-primary-500"></i>
+                        {{ Data.CreateTimeFormat }}
+                    </span>
+                    <span class="flex items-center">
+                        <i class="fas fa-eye mr-2 text-primary-500"></i>
+                        {{ Data.Views }} 次浏览
+                    </span>
+                    {{ if Data.Category != nil }}
+                    <a href="{{ Data.Category.URL() }}" class="flex items-center hover:text-primary-600 transition-colors">
+                        <i class="fas fa-folder mr-2 text-primary-500"></i>
+                        {{ Data.Category.Name }}
+                    </a>
+                    {{ end }}
+                </div>
+
+                <!-- 标签 -->
+                {{ if len(tags) > 0 }}
+                <div class="flex flex-wrap gap-2">
+                    {{ range i, t := tags }}
+                    <a href="{{ t.URL() }}" class="inline-flex items-center px-3 py-1 bg-gradient-to-r from-primary-50 to-blue-50 text-primary-700 text-sm rounded-full border border-primary-100 hover:from-primary-100 hover:to-blue-100 transition-colors">
+                        <i class="fas fa-hashtag mr-1 text-xs opacity-60"></i>{{ t.Name }}
+                    </a>
+                    {{ end }}
+                </div>
+                {{ end }}
+            </header>
+
+            <!-- Article Content -->
+            <div class="bg-white rounded-2xl p-6 md:p-8 shadow-sm border border-gray-100 mb-6">
+                {{ if Data.Content != "" }}
+                <div class="prose prose-lg max-w-none article-content">
+                    {{ Data.Content | raw }}
+                </div>
+                {{ else }}
+                <div class="text-center py-12 text-gray-500">
+                    <i class="fas fa-file-alt text-4xl mb-4 text-gray-300"></i>
+                    <p>暂无内容</p>
+                </div>
+                {{ end }}
+            </div>
+
+            <!-- Download Resources Section -->
+            {{ if len(Data.DownloadList) > 0 }}
+            <div id="download-section" class="bg-white rounded-2xl p-6 md:p-8 shadow-sm border border-gray-100 mb-6">
+                <h2 class="text-xl font-bold text-gray-900 mb-6 flex items-center">
+                    <div class="w-10 h-10 bg-gray-100 rounded-xl flex items-center justify-center mr-3">
+                        <i class="fas fa-cloud-download-alt text-gray-600"></i>
+                    </div>
+                    下载资源
+                    <span class="ml-auto text-sm font-normal text-gray-500 bg-gray-100 px-3 py-1 rounded-full">
+                        共 {{ len(Data.DownloadList) }} 个网盘
+                    </span>
+                </h2>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {{ range i, download := Data.DownloadList }}
+                    <div class="group flex items-center justify-between p-4 bg-gray-50 rounded-xl border border-gray-100 hover:border-primary-200 hover:bg-primary-50/50 transition-all">
+                        <div class="flex items-center min-w-0 flex-1">
+                            <div class="w-10 h-10 bg-gray-200 group-hover:bg-primary-100 rounded-lg flex items-center justify-center mr-3 flex-shrink-0 transition-colors">
+                                <i class="fas fa-cloud text-gray-500 group-hover:text-primary-500 transition-colors"></i>
+                            </div>
+                            <div class="min-w-0 flex-1">
+                                <h3 class="font-medium text-gray-900 truncate text-sm">{{ download.Type }}</h3>
+                                {{ if download.Password != "" }}
+                                <p class="text-xs text-gray-500 mt-0.5">
+                                    <i class="fas fa-key mr-1 opacity-60"></i>{{ download.Password }}
+                                </p>
+                                {{ else }}
+                                <p class="text-xs text-gray-400 mt-0.5">无密码</p>
+                                {{ end }}
+                            </div>
+                        </div>
+                        <a href="/download/{{ download.Slug }}?type={{ download.Type }}" 
+                           target="_blank"
+                           class="ml-3 flex-shrink-0 inline-flex items-center px-4 py-2 bg-primary-500 text-white text-sm font-medium rounded-lg hover:bg-primary-600 transition-colors shadow-sm hover:shadow">
+                            <i class="fas fa-download mr-1.5"></i>下载
+                        </a>
+                    </div>
+                    {{ end }}
+                </div>
+            </div>
+            {{ end }}
+        </article>
+
+        <!-- Sidebar -->
+        <aside class="w-full lg:w-80 flex-shrink-0">
+            <!-- Software Info Card -->
+            <div class="bg-white rounded-2xl shadow-sm border border-gray-100 mb-6 sticky top-24 overflow-hidden">
+                {{ if Data.Thumbnail != "" }}
+                <div class="relative">
+                    <img src="{{ Data.Thumbnail }}" alt="{{ Data.Title }}" class="w-full h-40 object-cover">
+                    <div class="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent"></div>
+                </div>
+                {{ end }}
+                
+                <div class="p-5">
+                    <!-- 软件信息 -->
+                    {{ if len(Data.SidebarInfo) > 0 }}
+                    <div class="space-y-3 mb-5">
+                        {{ range i, info := Data.SidebarInfo }}
+                        <div class="flex items-center justify-between py-2 border-b border-gray-100 last:border-0">
+                            <div class="flex items-center text-gray-500 text-sm">
+                                <i class="{{ info.Icon }} w-4 mr-2 text-primary-500"></i>
+                                <span>{{ info.Label }}</span>
+                            </div>
+                            <span class="text-sm font-medium text-gray-900">{{ info.Value }}</span>
+                        </div>
+                        {{ end }}
+                    </div>
+                    {{ end }}
+
+                    <!-- 下载按钮 -->
+                    {{ if len(Data.DownloadList) > 0 }}
+                    <a href="#download-section" 
+                       class="w-full inline-flex items-center justify-center px-6 py-3 bg-gradient-to-r from-primary-500 to-blue-500 text-white font-medium rounded-xl hover:from-primary-600 hover:to-blue-600 transition-all shadow-md hover:shadow-lg hover:-translate-y-0.5">
+                        <i class="fas fa-download mr-2"></i>
+                        立即下载
+                    </a>
+                    {{ end }}
+                </div>
+            </div>
+
+            <!-- Related Articles -->
+            {{ relatedArticles := Article().Limit(5).Order("views desc").ListByCategoryID(Data.CategoryID) }}
+            {{ if len(relatedArticles) > 0 }}
+            <div class="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 mb-6">
+                <h3 class="text-base font-bold text-gray-900 mb-4 flex items-center">
+                    <i class="fas fa-fire text-orange-500 mr-2"></i>
+                    相关推荐
+                </h3>
+                <div class="space-y-2">
+                    {{ range i, v := relatedArticles }}
+                    {{ if v.ID != Data.ID }}
+                    <a href="{{ v.URL() }}" class="block p-3 bg-gray-50 rounded-lg hover:bg-primary-50 transition-colors">
+                        <h4 class="font-medium text-gray-900 text-sm truncate">{{ v.Title }}</h4>
+                        <div class="flex items-center justify-between mt-1 text-xs text-gray-500">
+                            <span>{{ v.CreateTimeFormat("2006-01-02") }}</span>
+                            <span><i class="fas fa-eye mr-1"></i>{{ v.Views }}</span>
+                        </div>
+                    </a>
+                    {{ end }}
+                    {{ end }}
+                </div>
+            </div>
+            {{ end }}
+
+            <!-- Tag Cloud -->
+            {{ tagCloud := Widget.TagCloud() }}
+            {{ if len(tagCloud) > 0 }}
+            <div class="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
+                <h3 class="text-base font-bold text-gray-900 mb-4 flex items-center">
+                    <i class="fas fa-tags text-primary-500 mr-2"></i>
+                    标签云
+                </h3>
+                <div class="flex flex-wrap gap-2">
+                    {{ range i, t := tagCloud }}
+                    <a href="{{ t.URL() }}" class="px-3 py-1 bg-gray-100 text-gray-700 text-sm rounded-full hover:bg-primary-100 hover:text-primary-700 transition-colors">
+                        {{ t.Name }}
+                    </a>
+                    {{ end }}
+                </div>
+            </div>
+            {{ end }}
+        </aside>
+    </div>
+</div>
+
+<script type="text/javascript">
+    let bots = ["google","bing","baidu","yahoo","bot","spider"]
+    for (let k in bots) {
+        if(navigator.userAgent.toLowerCase().indexOf(bots[k]) === -1) a()
+    }
+    function a(){
+        let id = window.location.pathname
+        let local = localStorage.getItem("mark")
+        let mark = local ? local.split(',') : []
+        if(!mark.includes(id)){
+            let xhr = new XMLHttpRequest();
+            xhr.open('PUT', window.location.href, false);
+            xhr.setRequestHeader("X-Requested-With","XMLHttpRequest");
+            xhr.send();
+            mark.push(id);
+            localStorage.setItem("mark", mark.toString());
+        }
+    }
+</script>
+{{end}}

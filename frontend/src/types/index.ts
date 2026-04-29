@@ -15,6 +15,12 @@ export interface Article {
   res: Res[]
   category?: Category
   tags?: Tag[]
+  // 多媒体字段
+  type?: ContentType
+  mediaUrls?: string  // JSON string
+  videoUrl?: string
+  coverUrl?: string
+  tag?: string  // First tag name for display
 }
 
 export interface Extend {
@@ -63,7 +69,28 @@ export interface Favorite {
   id: number
   userId: number
   articleId: number
-  createTime: string
+  createdAt: string
+  article?: Article
+}
+
+// Like types
+export interface Like {
+  id: number
+  userId: number
+  articleId: number
+  type: LikeType  // 1=like, 2=dislike
+  createdAt: string
+  article?: Article
+}
+
+export type LikeType = 0 | 1 | 2  // 0=none, 1=like, 2=dislike
+
+// View History types
+export interface ViewHistory {
+  id: number
+  userId: number
+  articleId: number
+  viewedAt: string
   article?: Article
 }
 
@@ -100,6 +127,12 @@ export interface AuthResponse {
 export interface FavoriteListResponse {
   data: Favorite[]
   total: number
+}
+
+export interface LikeStatusResponse {
+  type: LikeType
+  likes: number
+  dislikes: number
 }
 
 // Content types for InfoCard

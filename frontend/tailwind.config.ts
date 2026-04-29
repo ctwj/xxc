@@ -10,31 +10,43 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        background: 'var(--background)',
-        foreground: 'var(--foreground)',
+        background: 'hsl(var(--background))',
+        foreground: 'hsl(var(--foreground))',
+        card: {
+          DEFAULT: 'hsl(var(--card))',
+          foreground: 'hsl(var(--card-foreground))',
+        },
+        popover: {
+          DEFAULT: 'hsl(var(--popover))',
+          foreground: 'hsl(var(--popover-foreground))',
+        },
         primary: {
-          DEFAULT: 'var(--primary)',
-          foreground: 'var(--primary-foreground)',
+          DEFAULT: 'hsl(var(--primary))',
+          foreground: 'hsl(var(--primary-foreground))',
         },
         secondary: {
-          DEFAULT: 'var(--secondary)',
-          foreground: 'var(--secondary-foreground)',
+          DEFAULT: 'hsl(var(--secondary))',
+          foreground: 'hsl(var(--secondary-foreground))',
         },
         accent: {
-          DEFAULT: 'var(--accent)',
-          foreground: 'var(--accent-foreground)',
+          DEFAULT: 'hsl(var(--accent))',
+          foreground: 'hsl(var(--accent-foreground))',
         },
         destructive: {
-          DEFAULT: 'var(--destructive)',
-          foreground: 'var(--destructive-foreground)',
+          DEFAULT: 'hsl(var(--destructive))',
+          foreground: 'hsl(var(--destructive-foreground))',
+        },
+        success: {
+          DEFAULT: 'hsl(var(--success))',
+          foreground: 'hsl(var(--success-foreground))',
         },
         muted: {
-          DEFAULT: 'var(--muted)',
-          foreground: 'var(--muted-foreground)',
+          DEFAULT: 'hsl(var(--muted))',
+          foreground: 'hsl(var(--muted-foreground))',
         },
-        border: 'var(--border)',
-        input: 'var(--input)',
-        ring: 'var(--ring)',
+        border: 'hsl(var(--border))',
+        input: 'hsl(var(--input))',
+        ring: 'hsl(var(--ring))',
       },
       borderRadius: {
         lg: 'var(--radius)',
@@ -50,14 +62,56 @@ const config: Config = {
           from: { height: 'var(--radix-accordion-content-height)' },
           to: { height: '0' },
         },
+        'fade-in': {
+          from: { opacity: '0', transform: 'translateY(10px)' },
+          to: { opacity: '1', transform: 'translateY(0)' },
+        },
+        'slide-in': {
+          from: { opacity: '0', transform: 'translateX(-20px)' },
+          to: { opacity: '1', transform: 'translateX(0)' },
+        },
       },
       animation: {
         'accordion-down': 'accordion-down 0.2s ease-out',
         'accordion-up': 'accordion-up 0.2s ease-out',
+        'fade-in': 'fade-in 0.5s ease-out',
+        'slide-in': 'slide-in 0.5s ease-out',
       },
     },
   },
-  plugins: [],
+  plugins: [
+    function ({ addUtilities }: any) {
+      addUtilities({
+        '.glass': {
+          'background-color': 'rgba(0, 0, 0, 0.4)',
+          'backdrop-filter': 'blur(24px)',
+          'border-top': '1px solid rgba(255, 255, 255, 0.1)',
+        },
+        '.light .glass': {
+          'background-color': 'rgba(255, 255, 255, 0.6)',
+          'border-top': '1px solid rgba(0, 0, 0, 0.1)',
+        },
+        '.glass-card': {
+          'background-color': 'rgba(255, 255, 255, 0.05)',
+          'backdrop-filter': 'blur(12px)',
+          'border': '1px solid rgba(255, 255, 255, 0.1)',
+        },
+        '.light .glass-card': {
+          'background-color': 'rgba(255, 255, 255, 0.8)',
+          'border': '1px solid rgba(0, 0, 0, 0.1)',
+        },
+        '.gradient-text': {
+          'background-clip': 'text',
+          '-webkit-background-clip': 'text',
+          'color': 'transparent',
+          'background-image': 'linear-gradient(to bottom right, white, rgba(255, 255, 255, 0.6))',
+        },
+        '.light .gradient-text': {
+          'background-image': 'linear-gradient(to bottom right, black, rgba(0, 0, 0, 0.6))',
+        },
+      })
+    },
+  ],
 }
 
 export default config

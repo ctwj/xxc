@@ -36,7 +36,7 @@ func APIArticleList(c *fiber.Ctx) error {
 		category, catErr := service.Category.GetBySlug(categorySlug)
 		if catErr != nil {
 			return c.JSON(fiber.Map{
-				"data":     []entity.ArticleBase{},
+				"data":     []interface{}{},
 				"total":    0,
 				"page":     page,
 				"pageSize": pageSize,
@@ -50,7 +50,7 @@ func APIArticleList(c *fiber.Ctx) error {
 		tag, tagErr := service.Tag.GetBySlug(tagSlug)
 		if tagErr != nil {
 			return c.JSON(fiber.Map{
-				"data":     []entity.ArticleBase{},
+				"data":     []interface{}{},
 				"total":    0,
 				"page":     page,
 				"pageSize": pageSize,
@@ -70,10 +70,51 @@ func APIArticleList(c *fiber.Ctx) error {
 		return c.Status(500).JSON(fiber.Map{"error": "failed to get articles"})
 	}
 
+	// Build response with full article details including media fields
+	result := make([]map[string]interface{}, 0, len(list))
+	for _, item := range list {
+		// Get article detail for media fields
+		article, articleErr := service.Article.Get(item.ID)
+
+		articleMap := map[string]interface{}{
+			"id":          item.ID,
+			"slug":        item.Slug,
+			"title":       item.Title,
+			"description": item.Description,
+			"thumbnail":   item.Thumbnail,
+			"views":       item.Views,
+			"createTime":  item.CreateTime,
+			"categoryId":  item.CategoryID,
+		}
+
+		// Add media fields from article detail
+		if articleErr == nil {
+			articleMap["type"] = article.ContentType
+			articleMap["mediaUrls"] = article.MediaUrls
+			articleMap["videoUrl"] = article.VideoUrl
+			articleMap["coverUrl"] = article.CoverUrl
+		} else {
+			articleMap["type"] = "text"
+			articleMap["mediaUrls"] = ""
+			articleMap["videoUrl"] = ""
+			articleMap["coverUrl"] = ""
+		}
+
+		// Get first tag for display
+		tags, _ := service.Tag.ListByArticleID(&coreCtx.Context{}, item.ID)
+		if len(tags) > 0 {
+			articleMap["tag"] = tags[0].Name
+		} else {
+			articleMap["tag"] = ""
+		}
+
+		result = append(result, articleMap)
+	}
+
 	hasMore := page*pageSize < int(total)
 
 	return c.JSON(fiber.Map{
-		"data":     list,
+		"data":     result,
 		"total":    total,
 		"page":     page,
 		"pageSize": pageSize,
@@ -105,6 +146,12 @@ func APIArticleDetail(c *fiber.Ctx) error {
 	// Get tags
 	tags, _ := service.Tag.ListByArticleID(&coreCtx.Context{}, article.ID)
 
+	// Get first tag name for display
+	tagName := ""
+	if len(tags) > 0 {
+		tagName = tags[0].Name
+	}
+
 	return c.JSON(fiber.Map{
 		"id":          article.ID,
 		"slug":        article.Slug,
@@ -117,8 +164,14 @@ func APIArticleDetail(c *fiber.Ctx) error {
 		"createTime":  article.CreateTime,
 		"category":    category,
 		"tags":        tags,
+		"tag":         tagName,
 		"extends":     article.Extends,
 		"res":         article.Res,
+		// 多媒体字段
+		"type":       article.ContentType,
+		"mediaUrls":  article.MediaUrls,
+		"videoUrl":   article.VideoUrl,
+		"coverUrl":   article.CoverUrl,
 	})
 }
 

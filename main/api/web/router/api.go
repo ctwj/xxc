@@ -30,6 +30,18 @@ func RegisterAPIRoutes(app fiber.Router) {
 	favorites.Post("/", controller.FavoriteAdd)
 	favorites.Delete("/:id", controller.FavoriteRemove)
 
+	// Like APIs - authentication required
+	likes := api.Group("/likes", middleware.JWTMiddleware)
+	likes.Post("/", controller.LikeSet)
+	likes.Get("/", controller.LikeList)
+	likes.Get("/status", controller.LikeGet)
+
+	// View History APIs - authentication required
+	viewHistory := api.Group("/history", middleware.JWTMiddleware)
+	viewHistory.Post("/", controller.ViewHistoryRecord)
+	viewHistory.Get("/", controller.ViewHistoryList)
+	viewHistory.Delete("/", controller.ViewHistoryClear)
+
 	// Webhook API - for ISR revalidation
 	api.Post("/webhook/revalidate", controller.WebhookRevalidate)
 }

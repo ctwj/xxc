@@ -72,3 +72,8 @@ func ValidateToken(tokenString string) (*Claims, error) {
 func RefreshToken(claims *Claims) (string, error) {
 	return GenerateToken(claims.UserID, claims.Username, claims.Role)
 }
+
+// GenerateJWTToken is an alias for GenerateToken for compatibility
+func GenerateJWTToken(userID uint, username, role string) (string, error) {
+	return GenerateToken(userID, username, role)
+}
