@@ -61,6 +61,8 @@ func initPlugins() {
 		plugins.NewDirectLinkDownload(),
 		// Webhook trigger for ISR revalidation (configure webhook_url and webhook_secret in config)
 		// plugins.NewWebhookTrigger("https://your-frontend.com/api/revalidate", "your-secret"),
+		// Telegram channel sync plugin
+		plugins.NewTelegramChannelSync(),
 	)
 
 }

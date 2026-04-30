@@ -20,23 +20,6 @@
   </a-form-item>
 
   <a-divider />
-
-  <a-typography-title :heading="6">Webhook 配置 (ISR Revalidation)</a-typography-title>
-  <a-form-item label="Webhook URL" style="max-width: 600px">
-    <a-input v-model="data.webhook_url" placeholder="https://your-frontend.com/api/revalidate" />
-    <template #extra>
-      前端 ISR revalidation API 地址，用于文章发布后自动更新前端页面
-    </template>
-  </a-form-item>
-
-  <a-form-item label="Webhook Secret" style="max-width: 600px">
-    <a-input v-model="data.webhook_secret" placeholder="your-secret-key" />
-    <template #extra>
-      用于验证 webhook 请求的密钥，需与前端 REVALIDATE_SECRET 环境变量一致
-    </template>
-  </a-form-item>
-
-  <a-divider />
 </template>
 
 <script setup>

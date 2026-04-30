@@ -53,14 +53,13 @@ func (a *ArticleBase) CreateTimeFormat(layouts ...string) string {
 }
 
 type ArticleDetail struct {
-	ArticleID  int        `gorm:"type:int;size:32;primaryKey"   json:"article_id"`
-	Keywords   string     `gorm:"type:varchar(250);default:''"  json:"keywords"`
-	Content    string     `gorm:"type:string"                   json:"content"`
-	Extends    vo.Extends `gorm:"type:string"                   json:"extends"`
-	Res        vo.Extends `gorm:"type:string"                   json:"res"`
-	// 多媒体支持字段
-	ContentType  string `gorm:"type:varchar(20);default:'text'" json:"content_type"`   // text, image, video, image-text, video-text, images, images-text, images-video-text, long-text
-	MediaUrls    string `gorm:"type:text"                       json:"media_urls"`      // JSON array of image URLs
-	VideoUrl     string `gorm:"type:varchar(500);default:''"    json:"video_url"`       // Video URL
-	CoverUrl     string `gorm:"type:varchar(500);default:''"    json:"cover_url"`       // Video cover image URL
+	ArticleID   int        `gorm:"type:int;size:32;primaryKey"   json:"article_id"`
+	Keywords    string     `gorm:"type:varchar(250);default:''"  json:"keywords"`
+	Content     string     `gorm:"type:string"                   json:"content"`
+	ContentType string     `gorm:"type:varchar(20);default:'html'" json:"content_type"` // html, markdown
+	MediaUrls   string     `gorm:"type:text;default:''"           json:"media_urls"`    // JSON array of media URLs
+	VideoUrl    string     `gorm:"type:varchar(250);default:''"  json:"video_url"`
+	CoverUrl    string     `gorm:"type:varchar(250);default:''"  json:"cover_url"`
+	Extends     vo.Extends `gorm:"type:string"                   json:"extends"`
+	Res         vo.Extends `gorm:"type:string"                   json:"res"`
 }

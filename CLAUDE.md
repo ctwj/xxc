@@ -93,65 +93,57 @@ GORM handles migrations automatically.
 6. **Storage Drivers**: Supports local, S3, OSS, COS, FTP, B2 - configured via admin panel
 
 <!-- SPECKIT START -->
-## Active Feature: Next.js Frontend Integration
+## Active Feature: Telegram Channel Sync
 
-**Branch**: `001-react-frontend-integration`
-**Plan**: [specs/001-react-frontend-integration/plan.md](specs/001-react-frontend-integration/plan.md)
-**Status**: Implementation Complete
+**Branch**: `002-telegram-channel-sync`
+**Plan**: [specs/002-telegram-channel-sync/plan.md](specs/002-telegram-channel-sync/plan.md)
+**Status**: Planning Complete
 
 ### Key Documents
-- [Specification](specs/001-react-frontend-integration/spec.md)
-- [Research](specs/001-react-frontend-integration/research.md)
-- [Data Model](specs/001-react-frontend-integration/data-model.md)
-- [API Contracts](specs/001-react-frontend-integration/contracts/api.md)
-- [Quickstart](specs/001-react-frontend-integration/quickstart.md)
+- [Specification](specs/002-telegram-channel-sync/spec.md)
+- [Research](specs/002-telegram-channel-sync/research.md)
+- [Data Model](specs/002-telegram-channel-sync/data-model.md)
+- [API Contracts](specs/002-telegram-channel-sync/contracts/api.md)
+- [Quickstart](specs/002-telegram-channel-sync/quickstart.md)
 
 ### Architecture Decision
-Headless CMS 模式：Next.js (ISR) 前端 + Go REST API 后端
+Moss 插件模式：使用 gotd/td 库监听 Telegram 频道，自动同步消息为 CMS 文章
 
 ### Implementation Summary
 
-#### Backend API (Go/Fiber)
-- **CORS**: `main/api/web/middleware/cors.go` - Enables cross-origin requests from frontend
-- **JWT Auth**: `main/infrastructure/support/auth/jwt.go` - Token generation and validation
-- **Public API**: `main/api/web/controller/api.go` - Article, category, tag, search endpoints
-- **Auth API**: `main/api/web/controller/auth.go` - Login, logout, current user
-- **Favorites**: `main/domain/core/entity/favorite.go`, `repository/favorite.go`, `service/favorite.go`
-- **Webhook**: `main/api/web/controller/webhook.go` - ISR revalidation trigger
-- **Routes**: `main/api/web/router/api.go` - All `/api/*` endpoints
+#### Plugin Structure (简化架构)
+- **Main Plugin**: `main/plugins/TelegramChannelSync.go` - 包含实体定义和核心逻辑
+- **Sub Package**: `main/plugins/telegram_sync/` - 可选，用于拆分复杂逻辑
+  - `client.go` - Telegram 客户端管理
+  - `handler.go` - 消息处理与更新分发
+  - `filter.go` - 消息过滤规则引擎
+  - `media.go` - 媒体下载与处理
+  - `session.go` - 会话持久化（加密存储）
 
-#### Frontend (Next.js 15)
-- **Location**: `frontend/`
-- **Framework**: Next.js 15 with App Router, TypeScript, Tailwind CSS
-- **ISR**: 60-second revalidation for static pages
-- **Pages**: Home, Article detail, Categories, Tags, Search, Login, Register, Favorites
-- **API Client**: `frontend/src/lib/api.ts`
-- **Auth Context**: `frontend/src/contexts/AuthContext.tsx`
+#### Frontend Admin
+- **Config Component**: `admin/src/views/plugin/options/TelegramChannelSync.vue`
+- 集成到 Moss 现有的插件配置界面
 
-#### Deployment
-- **Frontend**: Vercel (configure `NEXT_PUBLIC_API_URL` and `REVALIDATE_SECRET`)
-- **Backend**: Any Go hosting (set `CORSOrigins` in config)
+**Note**: 所有后端代码集中在 `main/plugins/` 目录，复用现有 Article/Category 实体和服务，不创建独立的 entity/repository/service/controller 文件。前端只需添加一个配置表单组件。
+
+### Key Features
+1. Telegram 客户端连接与会话持久化
+2. 频道配置管理（增删改查）
+3. 消息过滤规则（关键词白名单/黑名单、类型、长度）
+4. 图片媒体下载与上传
+5. 同步状态监控与日志
+
+### Dependencies
+- gotd/td - Telegram MTProto client library
 
 ### Development Commands
 
 ```bash
-# Start backend
-cd main && go run cmd/web/main.go
+# Add dependency
+cd main && go get github.com/gotd/td@latest
 
-# Start frontend dev server
-cd frontend && npm run dev
-
-# Build frontend for production
-cd frontend && npm run build
+# Run with plugin
+task dev
 ```
-
-### Environment Variables
-
-**Frontend (.env.local)**:
-- `NEXT_PUBLIC_API_URL` - Backend API URL (e.g., http://localhost:9008)
-- `REVALIDATE_SECRET` - Secret for webhook authentication
-
-**Backend (conf.toml)**:
-- `CORSOrigins` - Allowed origins for CORS (e.g., http://localhost:3000,https://your-domain.com)
 <!-- SPECKIT END -->
 

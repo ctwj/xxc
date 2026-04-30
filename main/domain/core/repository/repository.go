@@ -1,8 +1,6 @@
 package repository
 
 import (
-	"moss/domain/core/entity"
-	"moss/infrastructure/persistent/db"
 	"moss/infrastructure/support/log"
 )
 
@@ -34,22 +32,5 @@ func MigrateTable() {
 
 	if err := Store.MigrateTable(); err != nil {
 		log.Error("migrate store table error", log.Err(err))
-	}
-
-	// New tables for frontend features
-	if err := db.DB.AutoMigrate(&entity.Favorite{}); err != nil {
-		log.Error("migrate favorite table error", log.Err(err))
-	}
-
-	if err := db.DB.AutoMigrate(&entity.Like{}); err != nil {
-		log.Error("migrate like table error", log.Err(err))
-	}
-
-	if err := db.DB.AutoMigrate(&entity.ViewHistory{}); err != nil {
-		log.Error("migrate view_history table error", log.Err(err))
-	}
-
-	if err := db.DB.AutoMigrate(&entity.User{}); err != nil {
-		log.Error("migrate user table error", log.Err(err))
 	}
 }
