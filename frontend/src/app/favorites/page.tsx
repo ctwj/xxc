@@ -2,45 +2,137 @@
 
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronLeft, User, Bookmark, Trash2 } from 'lucide-react';
+import { ChevronLeft, User, Bookmark, Trash2, Loader2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { InfoCard } from '@/components/home/InfoCard';
-import { InfoCardData } from '@/types';
-import { cn } from '@/lib/utils';
+import { InfoCardData, Article } from '@/types';
+import { api } from '@/lib/api';
+import { toast } from 'sonner';
 
-// Mock data for favorites (will be replaced with API calls)
-const MOCK_FAVORITES: InfoCardData[] = [
-  {
-    id: '1',
-    type: 'image-text',
-    title: '示例收藏文章',
-    content: '这是一篇收藏的文章内容示例。',
-    mediaUrl: 'https://images.unsplash.com/photo-1557683316-973673baf926?q=80&w=1000&auto=format&fit=crop',
-    tag: '技术',
-    publishTime: new Date().toISOString(),
-  },
-];
+// Convert Article to InfoCardData
+function articleToCardData(article: Article, tag?: string): InfoCardData {
+  // Parse mediaUrls if it's a JSON string
+  let mediaUrls: string[] = [];
+  if (article.mediaUrls) {
+    try {
+      mediaUrls = JSON.parse(article.mediaUrls);
+    } catch {
+      // If not valid JSON, treat as single URL
+      mediaUrls = article.mediaUrls ? [article.mediaUrls] : [];
+    }
+  }
+
+  // Determine content type
+  let type: InfoCardData['type'] = (article.type as InfoCardData['type']) || 'text';
+  if (!article.type) {
+    // Auto-detect type based on available fields
+    if (article.videoUrl) {
+      type = article.thumbnail ? 'video-text' : 'video';
+    } else if (mediaUrls.length > 1) {
+      type = article.content ? 'images-text' : 'images';
+    } else if (article.thumbnail) {
+      type = article.content ? 'image-text' : 'image';
+    } else if (article.content && article.content.length > 500) {
+      type = 'long-text';
+    }
+  }
+
+  return {
+    id: String(article.id),
+    type,
+    title: article.title,
+    content: article.content || article.description,
+    mediaUrl: article.thumbnail,
+    mediaUrls,
+    videoUrl: article.videoUrl,
+    coverUrl: article.coverUrl,
+    tag: tag || '未分类',
+    publishTime: new Date(article.createTime * 1000).toISOString(),
+    isNew: Date.now() - article.createTime * 1000 < 24 * 60 * 60 * 1000,
+  };
+}
+
+interface FavoriteItem {
+  id: number;
+  articleId: number;
+  article: Article;
+}
 
 export default function FavoritePage() {
   const router = useRouter();
   const [favorites, setFavorites] = useState<InfoCardData[]>([]);
+  const [favoriteIds, setFavoriteIds] = useState<Map<string, number>>(new Map()); // articleId -> favoriteId
   const [selectedCard, setSelectedCard] = useState<InfoCardData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState<{ id: number; username: string } | null>(null);
 
   useEffect(() => {
-    // Load favorites from localStorage for now
-    const savedFavorites = localStorage.getItem('favorites');
-    if (savedFavorites) {
-      setFavorites(JSON.parse(savedFavorites));
-    } else {
-      setFavorites(MOCK_FAVORITES);
-    }
-  }, []);
+    const loadData = async () => {
+      setLoading(true);
+      try {
+        // Check if user is logged in
+        const userData = await api.getCurrentUser();
+        setUser(userData);
 
-  const toggleFavorite = (card: InfoCardData) => {
-    const newFavorites = favorites.filter(f => f.id !== card.id);
-    setFavorites(newFavorites);
-    localStorage.setItem('favorites', JSON.stringify(newFavorites));
+        // Load favorites from API
+        const response = await api.getFavorites();
+        const favItems = response.data as FavoriteItem[];
+
+        const cardData: InfoCardData[] = [];
+        const idMap = new Map<string, number>();
+
+        for (const fav of favItems) {
+          if (fav.article) {
+            cardData.push(articleToCardData(fav.article));
+            idMap.set(String(fav.articleId), fav.id);
+          }
+        }
+
+        setFavorites(cardData);
+        setFavoriteIds(idMap);
+      } catch (error) {
+        // Not logged in or error
+        console.error('Failed to load favorites:', error);
+        setUser(null);
+        router.push('/login');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadData();
+  }, [router]);
+
+  const toggleFavorite = async (card: InfoCardData) => {
+    const favoriteId = favoriteIds.get(card.id);
+    if (!favoriteId) return;
+
+    try {
+      await api.removeFavorite(favoriteId);
+      setFavorites(prev => prev.filter(f => f.id !== card.id));
+      setFavoriteIds(prev => {
+        const next = new Map(prev);
+        next.delete(card.id);
+        return next;
+      });
+      toast.success('已取消收藏');
+    } catch (error) {
+      console.error('Failed to remove favorite:', error);
+      toast.error('取消收藏失败');
+    }
   };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background text-foreground flex items-center justify-center">
+        <Loader2 size={40} className="animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return null; // Will redirect to login
+  }
 
   return (
     <div className="min-h-screen bg-background text-foreground pb-20">
@@ -64,7 +156,7 @@ export default function FavoritePage() {
           <User size={40} className="text-white" />
         </div>
         <div>
-          <h2 className="text-2xl font-bold mb-1">每日信息差用户</h2>
+          <h2 className="text-2xl font-bold mb-1">{user.username}</h2>
           <div className="flex items-center gap-2 text-foreground/40 text-sm">
             <Bookmark size={14} />
             <span>{favorites.length} 个收藏内容</span>
