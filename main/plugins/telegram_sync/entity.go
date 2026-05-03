@@ -39,15 +39,15 @@ func (TelegramChannel) TableName() string {
 
 // TelegramSyncLog 同步日志
 type TelegramSyncLog struct {
-	ID            int    `gorm:"type:int;size:32;primaryKey;autoIncrement" json:"id"`
-	ChannelID     int64  `gorm:"type:bigint;index;not null" json:"channel_id"`
-	MessageID     int64  `gorm:"type:bigint;index;not null" json:"message_id"`
-	ArticleID     int    `gorm:"type:int;size:32;default:0;index" json:"article_id"`
-	Status        int    `gorm:"type:tinyint;default:0;index" json:"status"` // 0=失败, 1=成功, 2=跳过
-	ErrorMessage  string `gorm:"type:varchar(500);default:''" json:"error_message"`
-	MessageTitle  string `gorm:"type:varchar(250);default:''" json:"message_title"`
+	ID             int    `gorm:"type:int;size:32;primaryKey;autoIncrement" json:"id"`
+	ChannelID      int64  `gorm:"type:bigint;index;not null" json:"channel_id"`
+	MessageID      int64  `gorm:"type:bigint;index;not null" json:"message_id"`
+	ArticleID      int    `gorm:"type:int;size:32;default:0;index" json:"article_id"`
+	Status         int    `gorm:"type:tinyint;default:0;index" json:"status"` // 0=失败, 1=成功, 2=跳过
+	ErrorMessage   string `gorm:"type:varchar(500);default:''" json:"error_message"`
+	MessageTitle   string `gorm:"type:varchar(250);default:''" json:"message_title"`
 	MessageContent string `gorm:"type:text" json:"message_content"`
-	CreateTime    int64  `gorm:"type:bigint;default:0;index" json:"create_time"`
+	CreateTime     int64  `gorm:"type:bigint;default:0;index" json:"create_time"`
 }
 
 func (TelegramSyncLog) TableName() string {
@@ -68,6 +68,37 @@ func (TelegramSession) TableName() string {
 	return "telegram_session"
 }
 
+// TelegramMedia 媒体文件存储
+type TelegramMedia struct {
+	ID           int    `gorm:"type:int;size:32;primaryKey;autoIncrement" json:"id"`
+	MediaID      int64  `gorm:"type:bigint;uniqueIndex;not null" json:"media_id"`       // Telegram 文件 ID (photo ID 或 document ID)
+	MediaType    string `gorm:"type:varchar(20);not null" json:"media_type"`            // photo, document, video
+	AccessHash   int64  `gorm:"type:bigint;not null" json:"access_hash"`                // 访问哈希（用于下载）
+	FileReference []byte `gorm:"type:blob" json:"-"`                                     // 文件引用（用于下载）
+
+	// 来源信息
+	ChannelID    int64  `gorm:"type:bigint;index" json:"channel_id"`                    // 来源频道 ID
+	MessageID    int64  `gorm:"type:bigint;index" json:"message_id"`                    // 来源消息 ID
+
+	// 文件信息
+	Filename     string `gorm:"type:varchar(250);default:''" json:"filename"`           // 原始文件名
+	MimeType     string `gorm:"type:varchar(100);default:''" json:"mime_type"`          // MIME 类型
+	Size         int64  `gorm:"type:bigint;default:0" json:"size"`                      // 文件大小
+	Width        int    `gorm:"type:int;default:0" json:"width"`                        // 图片宽度
+	Height       int    `gorm:"type:int;default:0" json:"height"`                       // 图片高度
+
+	// 存储信息
+	StoragePath  string `gorm:"type:varchar(500);default:''" json:"storage_path"`       // 存储路径
+	StorageURL   string `gorm:"type:varchar(500);default:''" json:"storage_url"`        // 访问 URL
+
+	// 元数据
+	CreateTime   int64  `gorm:"type:bigint;default:0;index" json:"create_time"`
+}
+
+func (TelegramMedia) TableName() string {
+	return "telegram_media"
+}
+
 // FilterRule 过滤规则 JSON 结构
 type FilterRule struct {
 	Type          string   `json:"type"`            // whitelist, blacklist
@@ -78,16 +109,16 @@ type FilterRule struct {
 
 // ChannelConfig 频道配置（用于 JSON 存储）
 type ChannelConfig struct {
-	ChannelID         int64       `json:"channel_id"`
-	ChannelName       string      `json:"channel_name"`
-	ChannelLink       string      `json:"channel_link"`
-	Status            int         `json:"status"`
-	CategoryID        int         `json:"category_id"`
-	ArticleStatus     bool        `json:"article_status"`
-	FilterKeywords    *FilterRule `json:"filter_keywords,omitempty"`
-	FilterMessageTypes string     `json:"filter_message_types"`
-	FilterMinLength   int         `json:"filter_min_length"`
-	FilterMaxLength   int         `json:"filter_max_length"`
+	ChannelID          int64  `json:"channel_id"`
+	ChannelName        string `json:"channel_name"`
+	ChannelLink        string `json:"channel_link"`
+	Status             int    `json:"status"`
+	CategoryID         int    `json:"category_id"`
+	ArticleStatus      bool   `json:"article_status"`
+	FilterKeywords     string `json:"filter_keywords"`      // 改为字符串，前端存储原始值
+	FilterMessageTypes string `json:"filter_message_types"`
+	FilterMinLength    int    `json:"filter_min_length"`
+	FilterMaxLength    int    `json:"filter_max_length"`
 }
 
 // SyncLogItem 同步日志项（用于前端显示）
@@ -98,6 +129,16 @@ type SyncLogItem struct {
 	Status        int    `json:"status"`
 	MessageTitle  string `json:"message_title"`
 	CreateTime    int64  `json:"create_time"`
+}
+
+// MessageMediaInfo 消息媒体信息（用于文章创建）
+type MessageMediaInfo struct {
+	MediaID   int64  `json:"media_id"`
+	MediaType string `json:"media_type"`
+	URL       string `json:"url"`
+	Filename  string `json:"filename"`
+	Width     int    `json:"width"`
+	Height    int    `json:"height"`
 }
 
 // GetCreateTimeFormat 格式化创建时间

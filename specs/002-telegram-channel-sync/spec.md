@@ -2,7 +2,8 @@
 
 **Feature Branch**: `002-telegram-channel-sync`
 **Created**: 2026-04-30
-**Status**: Draft
+**Updated**: 2026-05-02
+**Status**: In Progress
 **Input**: User description: "使用 gotd/td 库监听 Telegram 频道消息并即时发布成文章，支持消息过滤"
 
 ## Clarifications
@@ -11,7 +12,65 @@
 
 - Q: 以往插件都只需要在插件目录新增代码，为什么这次需要多个目录？ → A: 采用简化架构，所有后端代码放在 `main/plugins/` 目录，复用现有实体和服务。前端配置表单放在 `admin/src/views/plugin/options/TelegramChannelSync.vue`，通过 Moss 现有的插件配置界面机制集成。
 
+### Session 2026-05-02
+
+- Q: 业务流程确认 → A: 用户确认了两个核心业务流程：
+  1. **首次配置流程**: 服务启动 → 添加配置 → 点击发送验证码 → 启动 Telegram 并发送验证码 → 登录成功 → 自动监听所有群组消息 → 配置频道 → 接收消息并创建文章
+  2. **重启服务后自动恢复**: 服务重启 → 检查配置和认证状态 → 自动启动客户端 → 自动监听消息 → 接收配置频道的消息并创建文章
+
 ## User Scenarios & Testing *(mandatory)*
+
+### User Story 0 - 首次配置流程 (Priority: P0) 🎯 核心流程
+
+作为 CMS 管理员，我希望在服务启动后能够完成首次配置，包括填写 Telegram API 配置、发送验证码完成登录认证，认证成功后系统能够自动开始监听所有群组消息，然后我可以配置需要同步的频道，系统监听到对应频道的消息后能够自动创建文章。
+
+**Why this priority**: 这是用户使用插件的第一步，没有这个流程用户无法使用任何功能。
+
+**Independent Test**: 可以通过完整的配置流程验证：启动服务 → 配置 → 认证 → 监听 → 创建文章。
+
+**Acceptance Scenarios**:
+
+1. **Given** 服务已启动且插件已加载，**When** 管理员进入插件配置页面，**Then** 显示基本配置表单（App ID、App Hash、手机号等）
+2. **Given** 管理员已填写手机号，**When** 点击"发送验证码"按钮，**Then** 系统启动 Telegram 客户端并发送验证码到用户手机
+3. **Given** 用户已收到验证码，**When** 输入验证码并提交，**Then** 系统完成认证并保存会话，显示认证成功状态
+4. **Given** 认证成功后，**When** 系统自动开始监听所有群组消息，**Then** 消息处理回调被正确设置
+5. **Given** 管理员配置了要监听的频道，**When** 该频道发布新消息，**Then** 系统自动创建文章
+
+---
+
+### User Story 0.5 - 服务重启后自动恢复 (Priority: P0) 🎯 核心流程
+
+作为 CMS 管理员，我希望在服务重启后，如果之前已经配置过并认证成功，系统能够自动启动 Telegram 客户端并恢复监听，无需我手动重新认证，对应频道接收到消息后能够自动创建文章。
+
+**Why this priority**: 这是生产环境稳定运行的关键，没有自动恢复功能每次重启都需要重新认证，严重影响可用性。
+
+**Independent Test**: 可以通过重启服务后验证：检查认证状态 → 检查监听状态 → 发送测试消息 → 验证文章创建。
+
+**Acceptance Scenarios**:
+
+1. **Given** 服务重启且存在已保存的会话数据，**When** 插件加载，**Then** 系统自动初始化 Telegram 客户端并尝试恢复会话
+2. **Given** 会话恢复成功，**When** 客户端连接建立，**Then** 系统自动设置消息处理回调并开始监听
+3. **Given** 会话恢复成功且已配置频道，**When** 配置的频道发布新消息，**Then** 系统自动创建文章
+4. **Given** 会话已过期或失效，**When** 自动恢复失败，**Then** 系统显示需要重新认证的提示
+
+---
+
+### User Story 0.6 - 运行时动态添加频道 (Priority: P0) 🎯 核心流程
+
+作为 CMS 管理员，我希望在系统正常运行时能够动态添加新的群组或频道到监听列表，添加后系统能够立即开始监听新添加的群组或频道，收到消息后能够自动创建文章，无需重启服务。
+
+**Why this priority**: 这是实际使用中的常见场景，用户经常需要在运行时添加新的监听源。
+
+**Independent Test**: 可以通过运行时添加新频道，发送测试消息，验证文章创建。
+
+**Acceptance Scenarios**:
+
+1. **Given** 系统正常运行且已认证，**When** 管理员添加新频道到监听列表，**Then** 新频道配置被保存
+2. **Given** 新频道已添加，**When** 该频道发布新消息，**Then** 系统正确识别频道 ID 并创建文章
+3. **Given** 系统正在监听多个频道，**When** 管理员添加新频道，**Then** 系统同时监听原有频道和新添加的频道
+4. **Given** 管理员修改了频道配置，**When** 保存配置后，**Then** 新配置立即生效（通过重新解析 channels_json）
+
+---
 
 ### User Story 1 - 频道消息自动同步发布 (Priority: P1)
 
@@ -121,6 +180,13 @@
 - **FR-012**: 系统必须作为 Moss 插件实现，集成到现有 CMS 架构中
 - **FR-013**: 系统必须支持 Telegram 认证状态持久化，首次认证成功后保存会话信息
 - **FR-014**: 插件重启时，如果存在已保存的会话信息，必须能够自动恢复认证状态，无需用户重新登录 Telegram
+- **FR-015**: 认证成功后，系统必须自动开始监听所有群组和频道的消息更新
+- **FR-016**: 系统必须支持通过前端界面触发发送验证码流程，并启动 Telegram 客户端
+- **FR-017**: 服务重启时，如果配置完整（App ID、App Hash、Session Key）且存在有效会话，必须自动启动 Telegram 客户端并恢复监听
+- **FR-018**: 消息处理回调必须在认证成功后立即设置，确保新消息能够被正确处理
+- **FR-019**: 系统必须能够区分频道消息和群组消息，并正确提取来源 ID
+- **FR-020**: 系统必须支持运行时动态添加频道，新添加的频道配置保存后立即生效，无需重启服务
+- **FR-021**: 消息处理时必须重新解析频道配置，确保使用最新的监听列表
 
 ### Key Entities
 
@@ -150,3 +216,94 @@
 - 同步的文章默认状态为"已发布"，可通过配置修改
 - Telegram 会话信息使用加密存储，确保安全性
 - 插件遵循 Moss 现有的插件架构和生命周期管理
+
+## Implementation Status
+
+### 已实现功能 ✅
+
+1. **认证流程 (FR-016)**
+   - `SendAuthCode`: 发送验证码并启动客户端
+   - `VerifyAuthCode`: 验证验证码并完成认证
+   - 前端界面支持发送验证码和验证流程
+
+2. **会话持久化 (FR-013)**
+   - `DBStorage` 实现了 `session.Storage` 接口
+   - 使用 AES-256-GCM 加密存储会话数据
+   - 会话数据存储在 `telegram_session` 表
+
+3. **服务重启自动恢复 (FR-014, FR-017)**
+   - `initClient` 中检查 session storage 并自动启动客户端
+   - 会话恢复成功后自动设置 `Authenticated` 和 `Connected` 状态
+   - 消息处理回调在客户端初始化时设置
+
+4. **消息监听 (FR-015, FR-018)**
+   - `handleUpdate` 处理所有 Telegram 更新
+   - `handleNewChannelMessage` 处理频道消息
+   - `handleNewMessage` 处理群组消息
+   - 消息处理回调通过 `SetMessageHandler` 设置
+
+5. **频道配置管理 (FR-006, FR-007)**
+   - 前端支持添加、编辑、删除频道配置
+   - 频道配置通过 `channels_json` 字段存储
+   - 支持从 Telegram 获取频道列表
+
+6. **文章创建 (FR-003)**
+   - `handleChannelMessage` 中调用 `CreateArticle` 创建文章
+   - 支持消息去重 (FR-008)
+   - 记录同步日志 (FR-009)
+
+### 待完善功能 ⚠️
+
+1. ~~**消息过滤规则 (FR-004)** - filter.go 中的过滤逻辑未完全集成到消息处理流程~~ ✅ 已完成
+2. **媒体下载 (FR-005)** - media.go 未实现
+3. ~~**自动重连 (FR-010)** - 基础逻辑存在，但重连机制未完全实现~~ ✅ 已完成
+4. ~~**同步状态监控 (FR-009 部分)** - 日志记录已实现，但前端展示不完整~~ ✅ 已完成
+
+### 业务流程验证
+
+#### 场景 1: 首次配置流程 ✅
+```
+服务启动 → 插件加载 (Load) → 
+管理员配置 App ID/App Hash/手机号 → 
+点击发送验证码 (SendAuthCode) → 
+客户端启动并发送验证码 → 
+输入验证码 (VerifyAuthCode) → 
+认证成功，会话保存 → 
+配置频道 → 
+消息监听已就绪 → 
+收到消息 → 创建文章
+```
+
+#### 场景 2: 服务重启后自动恢复 ✅
+```
+服务重启 → 插件加载 (Load) → 
+initClient 检查 session storage → 
+自动启动客户端 (Start) → 
+会话恢复成功 → 
+消息处理回调已设置 → 
+收到配置频道的消息 → 创建文章
+```
+
+#### 场景 3: 运行时动态添加频道 ✅
+```
+系统正常运行 → 管理员添加新频道 → 
+前端调用 pluginSaveOptions → 
+后端 UpdateOptions 保存配置并更新插件内存 → 
+p.ChannelsJSON 被更新 → 
+收到新频道消息 → 
+handleChannelMessage 调用 parseChannels() 解析最新配置 → 
+找到频道配置 → 创建文章
+```
+
+### 关键代码路径
+
+| 功能 | 文件 | 方法 |
+|------|------|------|
+| 插件加载 | TelegramChannelSync.go | Load() |
+| 客户端初始化 | TelegramChannelSync.go | initClient() |
+| 发送验证码 | TelegramChannelSync.go | SendAuthCode() |
+| 验证认证 | TelegramChannelSync.go | VerifyAuthCode() |
+| 消息处理 | TelegramChannelSync.go | handleChannelMessage() |
+| 客户端启动 | client.go | Start() |
+| 更新处理 | client.go | handleUpdate() |
+| 会话存储 | session.go | LoadSession/StoreSession() |

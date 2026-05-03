@@ -74,13 +74,14 @@
 
 ### Implementation for User Story 3
 
-- [x] T016 [US3] Implement channel CRUD operations in `main/plugins/telegram_sync/channel.go`
-- [x] T017 [US3] Add channel config fields to plugin struct in `main/plugins/TelegramChannelSync.go`
-- [x] T018 [US3] Implement channel list storage (JSON in plugin config or database table)
+- [x] T016 [US3] Implement channel CRUD operations in `main/plugins/telegram_sync/entity.go` (ChannelConfig struct)
+- [x] T017 [US3] Add channel config fields to plugin struct in `main/plugins/TelegramChannelSync.go` (ChannelsJSON)
+- [x] T018 [US3] Implement channel list storage (JSON in plugin config via ChannelsJSON field)
 - [x] T019 [US3] Create frontend config form for channels in `admin/src/views/plugin/options/TelegramChannelSync.vue`
 - [x] T020 [US3] Add channel enable/disable toggle in frontend component
+- [x] T020b [US3] Implement runtime dynamic channel addition (parseChannels called in handleChannelMessage)
 
-**Checkpoint**: 频道配置管理功能完整，可独立测试配置的增删改查
+**Checkpoint**: 频道配置管理功能完整，支持运行时动态添加
 
 ---
 
@@ -92,16 +93,16 @@
 
 ### Implementation for User Story 1
 
-- [ ] T021 [US1] Implement update dispatcher setup in `main/plugins/telegram_sync/handler.go`
-- [ ] T022 [US1] Implement OnNewMessage handler for channel messages in `main/plugins/telegram_sync/handler.go`
-- [ ] T023 [US1] Implement message-to-article conversion in `main/plugins/telegram_sync/handler.go`
-- [ ] T024 [US1] Implement message ID deduplication in `main/plugins/telegram_sync/handler.go`
+- [x] T021 [US1] Implement update dispatcher setup in `main/plugins/telegram_sync/client.go` (handleUpdate)
+- [x] T022 [US1] Implement OnNewMessage handler for channel messages in `main/plugins/telegram_sync/client.go` (handleNewChannelMessage)
+- [x] T023 [US1] Implement message-to-article conversion in `main/plugins/TelegramChannelSync.go` (handleChannelMessage)
+- [x] T024 [US1] Implement message ID deduplication in `main/plugins/TelegramChannelSync.go` (CheckMessageDuplicate)
 - [ ] T025 [US1] Implement media download and upload in `main/plugins/telegram_sync/media.go`
-- [ ] T026 [US1] Integrate with Moss Article service for article creation
+- [x] T026 [US1] Integrate with Moss Article service for article creation (CreateArticle method)
 - [ ] T027 [US1] Implement auto-reconnect logic in `main/plugins/telegram_sync/client.go`
-- [ ] T028 [US1] Start Telegram client in plugin Load method
+- [x] T028 [US1] Start Telegram client in plugin Load method (initClient with session storage)
 
-**Checkpoint**: 核心同步功能完整，可独立测试消息同步
+**Checkpoint**: 核心同步功能基本完整，可测试消息同步（媒体处理待完善）
 
 ---
 
@@ -113,15 +114,15 @@
 
 ### Implementation for User Story 2
 
-- [ ] T029 [US2] Implement filter rule engine in `main/plugins/telegram_sync/filter.go`
-- [ ] T030 [US2] Implement keyword whitelist filter in `main/plugins/telegram_sync/filter.go`
-- [ ] T031 [US2] Implement keyword blacklist filter in `main/plugins/telegram_sync/filter.go`
-- [ ] T032 [US2] Implement message type filter (text, photo, video) in `main/plugins/telegram_sync/filter.go`
-- [ ] T033 [US2] Implement message length filter in `main/plugins/telegram_sync/filter.go`
-- [ ] T034 [US2] Integrate filter into message handler in `main/plugins/telegram_sync/handler.go`
-- [ ] T035 [US2] Add filter config UI in `admin/src/views/plugin/options/TelegramChannelSync.vue`
+- [x] T029 [US2] Implement filter rule engine in `main/plugins/telegram_sync/filter.go`
+- [x] T030 [US2] Implement keyword whitelist filter in `main/plugins/telegram_sync/filter.go`
+- [x] T031 [US2] Implement keyword blacklist filter in `main/plugins/telegram_sync/filter.go`
+- [x] T032 [US2] Implement message type filter (text, photo, video) in `main/plugins/telegram_sync/filter.go`
+- [x] T033 [US2] Implement message length filter in `main/plugins/telegram_sync/filter.go`
+- [x] T034 [US2] Integrate filter into message handler in `main/plugins/TelegramChannelSync.go` (handleChannelMessage)
+- [x] T035 [US2] Add filter config UI in `admin/src/views/plugin/options/TelegramChannelSync.vue`
 
-**Checkpoint**: 过滤功能完整，可独立测试各种过滤规则
+**Checkpoint**: 过滤功能完整，可独立测试各种过滤规则 ✅
 
 ---
 
@@ -133,13 +134,13 @@
 
 ### Implementation for User Story 4
 
-- [ ] T036 [US4] Implement sync log recording in `main/plugins/telegram_sync/log.go`
-- [ ] T037 [US4] Implement connection status tracking in `main/plugins/telegram_sync/client.go`
-- [ ] T038 [US4] Add status getter methods to plugin struct in `main/plugins/TelegramChannelSync.go`
-- [ ] T039 [US4] Add log cleanup (by keep_days config) in `main/plugins/telegram_sync/log.go`
-- [ ] T040 [US4] Add status display in frontend config component
+- [x] T036 [US4] Implement sync log recording in `main/plugins/TelegramChannelSync.go` (RecordSyncLog)
+- [x] T037 [US4] Implement connection status tracking in `main/plugins/telegram_sync/client.go` (GetReconnectStatus)
+- [x] T038 [US4] Add status getter methods to plugin struct in `main/plugins/TelegramChannelSync.go` (GetStatus)
+- [x] T039 [US4] Add log cleanup (by keep_days config) in `main/plugins/TelegramChannelSync.go` (startLogCleanupTask)
+- [x] T040 [US4] Add status display in frontend config component (refreshLogs, refreshStatus)
 
-**Checkpoint**: 监控功能完整，可独立测试状态查看
+**Checkpoint**: 监控功能完整，可独立测试状态查看 ✅
 
 ---
 
@@ -147,9 +148,9 @@
 
 **Purpose**: 最终集成和优化
 
-- [ ] T041 Register plugin in `main/startup/startup.go`
-- [ ] T042 [P] Add plugin info (ID, About) in `main/plugins/TelegramChannelSync.go`
-- [ ] T043 [P] Implement plugin Unload method for graceful shutdown
+- [x] T041 Register plugin in `main/startup/startup.go`
+- [x] T042 [P] Add plugin info (ID, About) in `main/plugins/TelegramChannelSync.go`
+- [x] T043 [P] Implement plugin Unload method for graceful shutdown
 - [ ] T044 Add error handling and logging throughout the plugin
 - [ ] T045 Test end-to-end flow: auth → add channel → sync message → verify article
 

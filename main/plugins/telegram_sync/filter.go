@@ -1,6 +1,7 @@
 package telegram_sync
 
 import (
+	"encoding/json"
 	"strings"
 
 	"github.com/gotd/td/tg"
@@ -35,10 +36,13 @@ func (f *FilterEngine) Apply(msg *tg.Message, config *ChannelConfig) bool {
 	}
 
 	// 3. 关键词过滤
-	if config.FilterKeywords != nil {
-		if !f.checkKeywords(msg, config.FilterKeywords) {
-			f.log.Debug("关键词过滤不符合")
-			return false
+	if config.FilterKeywords != "" {
+		rule, err := ParseFilterConfig(config.FilterKeywords)
+		if err == nil && rule != nil {
+			if !f.checkKeywords(msg, rule) {
+				f.log.Debug("关键词过滤不符合")
+				return false
+			}
 		}
 	}
 
@@ -252,4 +256,18 @@ func (f *FilterEngine) TruncateContent(text string, maxLen int) string {
 		return text
 	}
 	return text[:maxLen] + "..."
+}
+
+// ParseFilterConfig 解析过滤配置 JSON
+func ParseFilterConfig(jsonStr string) (*FilterRule, error) {
+	if jsonStr == "" {
+		return nil, nil
+	}
+
+	var rule FilterRule
+	if err := json.Unmarshal([]byte(jsonStr), &rule); err != nil {
+		return nil, err
+	}
+
+	return &rule, nil
 }
