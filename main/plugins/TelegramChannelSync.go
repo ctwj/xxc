@@ -427,7 +427,7 @@ func (p *TelegramChannelSync) handleChannelMessage(ctx context.Context, channelI
 		ChannelID:     channelID,
 		CategoryID:    channelConfig.CategoryID,
 		ArticleStatus: true, // 发布状态
-	}, title, content, thumbnailURL)
+	}, title, content, thumbnailURL, mediaInfos)
 
 	if err != nil {
 		p.ctx.Log.Error("创建文章失败", zap.Error(err))
@@ -513,7 +513,43 @@ func (p *TelegramChannelSync) countActiveChannels() int {
 }
 
 // CreateArticle 创建文章
-func (p *TelegramChannelSync) CreateArticle(channel *telegram_sync.TelegramChannel, title, content string, thumbnail string) (*entity.Article, error) {
+func (p *TelegramChannelSync) CreateArticle(channel *telegram_sync.TelegramChannel, title, content string, thumbnail string, mediaInfos []telegram_sync.MessageMediaInfo) (*entity.Article, error) {
+	// 构建媒体 URL 列表
+	var mediaURLs []string
+	var videoURL string
+	var coverURL string
+
+	for _, info := range mediaInfos {
+		if info.URL != "" {
+			mediaURLs = append(mediaURLs, info.URL)
+		}
+		// 视频类型单独处理
+		if info.MediaType == "video" && info.URL != "" {
+			videoURL = info.URL
+			// 如果没有封面，使用视频第一帧作为封面
+			if coverURL == "" {
+				coverURL = info.URL
+			}
+		}
+	}
+
+	// 序列化媒体 URL 列表为 JSON
+	mediaURLsJSON := ""
+	if len(mediaURLs) > 0 {
+		data, err := json.Marshal(mediaURLs)
+		if err == nil {
+			mediaURLsJSON = string(data)
+		}
+	}
+
+	// 如果没有缩略图但有媒体，使用第一个媒体作为缩略图
+	if thumbnail == "" && len(mediaURLs) > 0 {
+		thumbnail = mediaURLs[0]
+	}
+
+	// 将内容转换为 HTML 格式（段落用 <p> 标签包裹）
+	contentHTML := p.convertToHTML(content)
+
 	article := &entity.Article{
 		ArticleBase: entity.ArticleBase{
 			Slug:        fmt.Sprintf("tg-%d-%d", channel.ChannelID, time.Now().Unix()),
@@ -525,7 +561,11 @@ func (p *TelegramChannelSync) CreateArticle(channel *telegram_sync.TelegramChann
 			Description: truncateDescription(content, 200),
 		},
 		ArticleDetail: entity.ArticleDetail{
-			Content: content,
+			Content:     contentHTML,
+			ContentType: "html",
+			MediaUrls:   mediaURLsJSON,
+			VideoUrl:    videoURL,
+			CoverUrl:    coverURL,
 		},
 	}
 
@@ -533,7 +573,46 @@ func (p *TelegramChannelSync) CreateArticle(channel *telegram_sync.TelegramChann
 		return nil, err
 	}
 
+	// 保存媒体记录到数据库
+	if len(mediaInfos) > 0 {
+		for _, info := range mediaInfos {
+			media := &telegram_sync.TelegramMedia{
+				MediaID:     info.MediaID,
+				MediaType:   info.MediaType,
+				ChannelID:   channel.ChannelID,
+				Filename:    info.Filename,
+				Width:       info.Width,
+				Height:      info.Height,
+				StorageURL:  info.URL,
+				CreateTime:  time.Now().Unix(),
+			}
+			if err := db.DB.Create(media).Error; err != nil {
+				p.ctx.Log.Warn("保存媒体记录失败", zap.Error(err), zap.Int64("media_id", info.MediaID))
+			}
+		}
+	}
+
 	return article, nil
+}
+
+// convertToHTML 将纯文本转换为 HTML 格式
+func (p *TelegramChannelSync) convertToHTML(text string) string {
+	if text == "" {
+		return ""
+	}
+
+	// 按换行符分割
+	lines := strings.Split(text, "\n")
+	var htmlLines []string
+
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed != "" {
+			htmlLines = append(htmlLines, fmt.Sprintf("<p>%s</p>", trimmed))
+		}
+	}
+
+	return strings.Join(htmlLines, "\n")
 }
 
 // RecordSyncLog 记录同步日志

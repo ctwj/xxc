@@ -48,7 +48,7 @@ func initPlugins() {
 		plugins.NewPreBuildArticleCache(),
 		// plugins.NewPushToBaidu(),
 		// plugins.NewPushToBing(),
-		plugins.NewPushToSearchEngine(), // 统一的搜索引擎推送插件（百度+Bing）
+		// plugins.NewPushToSearchEngine(), // 统一的搜索引擎推送插件（百度+Bing）
 		plugins.NewMakeCarousel(),
 		plugins.NewPostStore(),
 		// plugins.NewDidiAuto(),
@@ -58,7 +58,7 @@ func initPlugins() {
 		// plugins.NewQuarkCloudTransfer(),
 		// plugins.NewAISeoPlugin(),
 		plugins.NewExternalLinkPlugin(),
-		plugins.NewDirectLinkDownload(),
+		// plugins.NewDirectLinkDownload(),
 		// Webhook trigger for ISR revalidation (configure webhook_url and webhook_secret in config)
 		// plugins.NewWebhookTrigger("https://your-frontend.com/api/revalidate", "your-secret"),
 		// Telegram channel sync plugin

@@ -8,7 +8,7 @@ import (
 
 // RegisterAPIRoutes registers public API routes for the frontend
 func RegisterAPIRoutes(app fiber.Router) {
-	api := app.Group("/api")
+	api := app.Group("/api", middleware.CORSConfig())
 
 	// Public APIs - no authentication required
 	api.Get("/articles", controller.APIArticleList)

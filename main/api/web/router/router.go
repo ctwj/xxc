@@ -55,6 +55,9 @@ func (r *Router) newFiber() *fiber.App {
 	// admin
 	app.Route(config.Config.Router.GetAdminPath(), r.RegisterAdmin)
 
+	// api (for frontend)
+	RegisterAPIRoutes(app)
+
 	// home
 	app.Route("/", r.RegisterHome)
 

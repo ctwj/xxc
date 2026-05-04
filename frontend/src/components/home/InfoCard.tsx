@@ -65,7 +65,10 @@ export const InfoCard: React.FC<InfoCardProps> = ({ data, style, className, isCu
   };
 
   const renderContent = () => {
-    switch (data.type) {
+    // Handle html/markdown types as text
+    const effectiveType = (data.type === 'html' || data.type === 'markdown') ? 'text' : data.type;
+
+    switch (effectiveType) {
       case 'text':
         return (
           <div className="flex flex-col items-center justify-center h-full p-8 text-center bg-gradient-to-b from-card to-background">

@@ -138,6 +138,8 @@ export interface LikeStatusResponse {
 // Content types for InfoCard
 export type ContentType =
   | 'text'
+  | 'html'
+  | 'markdown'
   | 'image'
   | 'video'
   | 'image-text'

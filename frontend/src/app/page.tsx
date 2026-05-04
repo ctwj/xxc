@@ -24,26 +24,29 @@ function articleToCardData(article: Article): InfoCardData {
     }
   }
 
-  // Determine content type
-  let type: ContentType = (article.type as ContentType) || 'text';
-  if (!article.type) {
-    // Auto-detect type based on available fields
-    if (article.videoUrl) {
-      type = article.thumbnail ? 'video-text' : 'video';
-    } else if (mediaUrls.length > 1) {
-      type = article.content ? 'images-text' : 'images';
-    } else if (article.thumbnail) {
-      type = article.content ? 'image-text' : 'image';
-    } else if (article.content && article.content.length > 500) {
-      type = 'long-text';
-    }
+  // Determine content type based on media fields
+  // Note: article.type from API is content format (html/markdown), not display type
+  let type: ContentType = 'text';
+
+  if (article.videoUrl) {
+    // Has video
+    type = article.description ? 'video-text' : 'video';
+  } else if (mediaUrls.length > 1) {
+    // Multiple images
+    type = article.description ? 'images-text' : 'images';
+  } else if (article.thumbnail || mediaUrls.length === 1) {
+    // Single image
+    type = article.description ? 'image-text' : 'image';
+  } else if (article.description && article.description.length > 500) {
+    // Long text without media
+    type = 'long-text';
   }
 
   return {
     id: String(article.id),
     type,
     title: article.title,
-    content: article.content || article.description,
+    content: article.description,
     mediaUrl: article.thumbnail,
     mediaUrls,
     videoUrl: article.videoUrl,
