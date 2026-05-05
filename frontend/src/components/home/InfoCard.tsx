@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Clock, Share2, ChevronLeft, ChevronRight } from 'lucide-react';
 import dynamic from 'next/dynamic';
@@ -24,11 +24,44 @@ interface InfoCardProps {
   onShare?: () => void;
 }
 
+// 根据文字长度计算字体大小
+const getFontSizeClass = (textLength: number): string => {
+  if (textLength <= 20) return 'text-2xl md:text-3xl';
+  if (textLength <= 50) return 'text-xl md:text-2xl';
+  if (textLength <= 100) return 'text-lg md:text-xl';
+  if (textLength <= 200) return 'text-base md:text-lg';
+  return 'text-sm md:text-base';
+};
+
+// 检测图片方向（需要异步加载图片获取尺寸）
+const useImageOrientation = (url: string | undefined): 'portrait' | 'landscape' | 'unknown' => {
+  const [orientation, setOrientation] = React.useState<'portrait' | 'landscape' | 'unknown'>('unknown');
+
+  useEffect(() => {
+    if (!url) {
+      setOrientation('unknown');
+      return;
+    }
+
+    const img = new Image();
+    img.onload = () => {
+      const isPortrait = img.height > img.width;
+      setOrientation(isPortrait ? 'portrait' : 'landscape');
+    };
+    img.onerror = () => setOrientation('unknown');
+    img.src = url;
+  }, [url]);
+
+  return orientation;
+};
+
 export const InfoCard: React.FC<InfoCardProps> = ({ data, style, className, isCurrent, onShare }) => {
-  const [isExpanded, setIsExpanded] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [showImagePreview, setShowImagePreview] = useState(false);
   const [previewImageIndex, setPreviewImageIndex] = useState(0);
+
+  // 获取单图的方向
+  const singleImageOrientation = useImageOrientation(data.mediaUrl);
 
   // 重置图片索引
   useEffect(() => {
@@ -60,6 +93,10 @@ export const InfoCard: React.FC<InfoCardProps> = ({ data, style, className, isCu
     return [];
   };
 
+  // 获取文字内容长度
+  const contentLength = data.content?.length || 0;
+  const fontSizeClass = getFontSizeClass(contentLength);
+
   const renderContent = () => {
     // Handle html/markdown types as text
     const effectiveType = (data.type === 'html' || data.type === 'markdown') ? 'text' : data.type;
@@ -68,41 +105,57 @@ export const InfoCard: React.FC<InfoCardProps> = ({ data, style, className, isCu
       case 'text':
         return (
           <div className="flex flex-col items-center justify-center h-full p-8 text-center bg-gradient-to-b from-card to-background">
-            {data.title && (
-              <h2 className="text-3xl md:text-4xl font-bold mb-6 gradient-text leading-tight">{data.title}</h2>
-            )}
             <div className={cn(
-              "text-lg md:text-xl text-foreground/80 leading-relaxed max-w-lg transition-all duration-300 overflow-y-auto max-h-[60vh] px-4",
-              isExpanded ? "max-h-full" : ""
+              `${fontSizeClass} text-foreground/90 leading-relaxed max-w-lg overflow-y-auto px-4`,
+              contentLength > 200 ? "max-h-[60vh]" : ""
             )}>
               {data.content}
             </div>
-            {data.content && data.content.length > 150 && !isExpanded && (
-              <button
-                onClick={() => setIsExpanded(true)}
-                className="mt-4 text-primary font-medium hover:underline transition-all"
-              >
-                展开
-              </button>
-            )}
           </div>
         );
 
       case 'long-text':
         return (
           <LongTextReader
-            title={data.title}
+            title=""
             content={data.content || ''}
             cardId={data.id}
           />
         );
 
       case 'image':
+        // 竖图：图片占满，文字在下方有底色
+        if (singleImageOrientation === 'portrait') {
+          return (
+            <div className="relative w-full h-full overflow-hidden">
+              <img
+                src={data.mediaUrl}
+                alt="图片内容"
+                className="w-full h-full object-cover cursor-zoom-in"
+                onClick={() => handleImageClick(0)}
+                onError={(e) => {
+                  (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1557683316-973673baf926?q=80&w=1000&auto=format&fit=crop';
+                }}
+              />
+              {data.content && (
+                <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-black/90 via-black/70 to-transparent">
+                  <p className={cn(
+                    `${fontSizeClass} text-white leading-relaxed`,
+                    contentLength > 100 ? "line-clamp-3" : ""
+                  )}>
+                    {data.content}
+                  </p>
+                </div>
+              )}
+            </div>
+          );
+        }
+        // 横图或未知：保持当前布局（图片上方，文字下方）
         return (
           <div className="relative w-full h-full overflow-hidden">
             <img
               src={data.mediaUrl}
-              alt={data.title || '图片内容'}
+              alt="图片内容"
               className="w-full h-full object-cover cursor-zoom-in"
               onClick={() => handleImageClick(0)}
               onError={(e) => {
@@ -110,10 +163,16 @@ export const InfoCard: React.FC<InfoCardProps> = ({ data, style, className, isCu
               }}
             />
             <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent pointer-events-none" />
-            <div className="absolute bottom-32 left-8 right-8 pointer-events-none">
-              {data.title && <h2 className="text-3xl font-bold text-white mb-2">{data.title}</h2>}
-              {data.content && <p className="text-white/80 line-clamp-2">{data.content}</p>}
-            </div>
+            {data.content && (
+              <div className="absolute bottom-32 left-8 right-8 pointer-events-none">
+                <p className={cn(
+                  `${fontSizeClass} text-white leading-relaxed`,
+                  contentLength > 100 ? "line-clamp-2" : ""
+                )}>
+                  {data.content}
+                </p>
+              </div>
+            )}
           </div>
         );
 
@@ -167,7 +226,7 @@ export const InfoCard: React.FC<InfoCardProps> = ({ data, style, className, isCu
       case 'images-text':
         return (
           <div className="flex flex-col w-full h-full bg-card overflow-hidden">
-            <div className="relative h-[60%] w-full overflow-hidden">
+            <div className="relative h-[55%] w-full overflow-hidden">
               {data.mediaUrls && data.mediaUrls.length > 0 && (
                 <>
                   <img
@@ -209,9 +268,15 @@ export const InfoCard: React.FC<InfoCardProps> = ({ data, style, className, isCu
                 </>
               )}
             </div>
-            <div className="h-[40%] w-full p-8 flex flex-col justify-center overflow-y-auto">
-              {data.title && <h2 className="text-2xl font-bold mb-4 gradient-text">{data.title}</h2>}
-              {data.content && <p className="text-foreground/70 leading-relaxed">{data.content}</p>}
+            {/* 文字区域 - 根据内容长度调整样式 */}
+            <div className="h-[45%] w-full flex flex-col justify-center overflow-y-auto px-8 py-6 bg-gradient-to-b from-card to-background">
+              {data.content && (
+                <p className={cn(
+                  `${fontSizeClass} text-foreground/80 leading-relaxed text-center`
+                )}>
+                  {data.content}
+                </p>
+              )}
             </div>
           </div>
         );
@@ -283,8 +348,14 @@ export const InfoCard: React.FC<InfoCardProps> = ({ data, style, className, isCu
 
             {/* 文字区域 */}
             <div className="h-[30%] w-full p-6 flex flex-col justify-center overflow-y-auto">
-              {data.title && <h2 className="text-xl font-bold mb-3 gradient-text">{data.title}</h2>}
-              {data.content && <p className="text-foreground/70 leading-relaxed text-sm line-clamp-3">{data.content}</p>}
+              {data.content && (
+                <p className={cn(
+                  `${fontSizeClass} text-foreground/70 leading-relaxed`,
+                  contentLength > 100 ? "line-clamp-3" : ""
+                )}>
+                  {data.content}
+                </p>
+              )}
             </div>
           </div>
         );
@@ -319,8 +390,14 @@ export const InfoCard: React.FC<InfoCardProps> = ({ data, style, className, isCu
                 <Plyr options={videoOptions} source={videoSrc} />
               </div>
               <div className="flex-1 w-full p-6 flex flex-col justify-center overflow-y-auto">
-                {data.title && <h2 className="text-xl font-bold mb-2 gradient-text">{data.title}</h2>}
-                {data.content && <p className="text-foreground/70 leading-relaxed text-sm line-clamp-4">{data.content}</p>}
+                {data.content && (
+                  <p className={cn(
+                    `${fontSizeClass} text-foreground/70 leading-relaxed`,
+                    contentLength > 100 ? "line-clamp-4" : ""
+                  )}>
+                    {data.content}
+                  </p>
+                )}
               </div>
             </div>
           );
@@ -334,26 +411,61 @@ export const InfoCard: React.FC<InfoCardProps> = ({ data, style, className, isCu
             </div>
             <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent pointer-events-none" />
             <div className="absolute left-0 right-0 bottom-24 p-8 flex flex-col justify-end pointer-events-none">
-              {data.title && <h2 className="text-2xl font-bold mb-2 text-white">{data.title}</h2>}
-              {data.content && <p className="line-clamp-3 text-sm md:text-base text-white/70">{data.content}</p>}
+              {data.content && (
+                <p className={cn(
+                  `${fontSizeClass} text-white leading-relaxed`,
+                  contentLength > 100 ? "line-clamp-3" : ""
+                )}>
+                  {data.content}
+                </p>
+              )}
             </div>
           </div>
         );
 
       case 'image-text':
+        // 竖图：图片占满，文字在下方有底色
+        if (singleImageOrientation === 'portrait') {
+          return (
+            <div className="relative w-full h-full overflow-hidden">
+              <img
+                src={data.mediaUrl}
+                alt="图片内容"
+                className="w-full h-full object-cover transition-transform duration-700 hover:scale-[1.02] cursor-zoom-in"
+                onClick={() => handleImageClick(0)}
+              />
+              {data.content && (
+                <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-black/90 via-black/70 to-transparent">
+                  <p className={cn(
+                    `${fontSizeClass} text-white leading-relaxed`,
+                    contentLength > 100 ? "line-clamp-3" : ""
+                  )}>
+                    {data.content}
+                  </p>
+                </div>
+              )}
+            </div>
+          );
+        }
+        // 横图：图片上方，文字下方
         return (
           <div className="flex flex-col w-full h-full bg-card overflow-hidden">
             <div className="h-[60%] w-full overflow-hidden">
               <img
                 src={data.mediaUrl}
-                alt={data.title || '图片内容'}
-                className="w-full h-full object-cover transition-transform duration-700 hover:scale-105 cursor-zoom-in"
+                alt="图片内容"
+                className="w-full h-full object-cover transition-transform duration-700 hover:scale-[1.02] cursor-zoom-in"
                 onClick={() => handleImageClick(0)}
               />
             </div>
-            <div className="h-[40%] w-full p-8 flex flex-col justify-center">
-              {data.title && <h2 className="text-2xl font-bold mb-4 gradient-text">{data.title}</h2>}
-              {data.content && <p className="text-foreground/70 leading-relaxed line-clamp-4">{data.content}</p>}
+            <div className="h-[40%] w-full flex flex-col justify-center overflow-y-auto px-8 py-6 bg-gradient-to-b from-card to-background">
+              {data.content && (
+                <p className={cn(
+                  `${fontSizeClass} text-foreground/80 leading-relaxed text-center`
+                )}>
+                  {data.content}
+                </p>
+              )}
             </div>
           </div>
         );
@@ -372,11 +484,11 @@ export const InfoCard: React.FC<InfoCardProps> = ({ data, style, className, isCu
         )}
         style={style}
       >
-        {/* 顶部时间信息 - 突出显示 */}
-        <div className="absolute top-8 left-8 right-8 z-10 flex items-center justify-between">
-          <div className="flex items-center gap-2 px-4 py-2 bg-foreground/40 backdrop-blur-xl rounded-full border border-foreground/10">
-            <Clock size={16} className="text-primary" />
-            <span className="text-sm font-bold text-background tracking-wide">
+        {/* 顶部时间信息 - 简洁优雅 */}
+        <div className="absolute top-6 left-6 right-6 z-10 flex items-center justify-between">
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-black/30 backdrop-blur-xl rounded-full border border-white/10">
+            <Clock size={14} className="text-white/80" />
+            <span className="text-xs font-medium text-white/90 tracking-wide">
               {formatRelativeTime(data.publishTime)}
             </span>
           </div>
@@ -390,10 +502,10 @@ export const InfoCard: React.FC<InfoCardProps> = ({ data, style, className, isCu
                 e.stopPropagation();
                 onShare();
               }}
-              className="p-3 bg-foreground/40 backdrop-blur-xl rounded-full text-background hover:bg-foreground/60 transition-all border border-foreground/10"
+              className="p-2.5 bg-black/30 backdrop-blur-xl rounded-full text-white/80 hover:bg-black/50 hover:text-white transition-all border border-white/10"
               title="分享"
             >
-              <Share2 size={18} />
+              <Share2 size={16} />
             </motion.button>
           )}
         </div>

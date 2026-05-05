@@ -28,7 +28,9 @@ function articleToCardData(article: Article): InfoCardData {
   let mediaUrls: string[] = [];
   if (article.mediaUrls) {
     try {
-      mediaUrls = JSON.parse(article.mediaUrls).map(toAbsoluteUrl);
+      const parsed = JSON.parse(article.mediaUrls);
+      mediaUrls = parsed.map(toAbsoluteUrl);
+      console.log('[DEBUG] mediaUrls conversion:', { original: article.mediaUrls, converted: mediaUrls });
     } catch {
       // If not valid JSON, treat as single URL
       mediaUrls = article.mediaUrls ? [toAbsoluteUrl(article.mediaUrls)!] : [];
@@ -53,12 +55,16 @@ function articleToCardData(article: Article): InfoCardData {
     type = 'long-text';
   }
 
+  // Determine the primary media URL for single-image display
+  // Use thumbnail if available, otherwise use first media URL from array
+  const primaryMediaUrl = article.thumbnail || (mediaUrls.length > 0 ? mediaUrls[0] : undefined);
+
   return {
     id: String(article.id),
     type,
     title: article.title,
     content: article.description,
-    mediaUrl: toAbsoluteUrl(article.thumbnail),
+    mediaUrl: primaryMediaUrl,
     mediaUrls,
     videoUrl: toAbsoluteUrl(article.videoUrl),
     coverUrl: toAbsoluteUrl(article.coverUrl),

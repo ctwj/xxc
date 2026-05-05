@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -18,6 +19,15 @@ import (
 	"moss/infrastructure/persistent/db"
 	"moss/plugins/telegram_sync"
 )
+
+// groupedMessage 缓存的分组消息
+type groupedMessage struct {
+	channelID   int64
+	messageID   int
+	groupedID   int64
+	msg         *tg.Message
+	receivedAt  time.Time
+}
 
 // TelegramChannelSync Telegram 频道同步插件
 type TelegramChannelSync struct {
@@ -61,22 +71,29 @@ type TelegramChannelSync struct {
 	cancel        context.CancelFunc
 	pluginCtx     context.Context
 	wg            sync.WaitGroup
+
+	// 分组消息缓存 (GroupedID -> []groupedMessage)
+	groupedMessages     map[int64][]groupedMessage
+	groupedMessagesMu   sync.Mutex
+	groupedProcessDelay time.Duration // 分组消息处理延迟
 }
 
 // NewTelegramChannelSync 创建插件实例
 func NewTelegramChannelSync() *TelegramChannelSync {
 	return &TelegramChannelSync{
-		AutoReconnect:  true,
-		ReconnectDelay: 5,
-		SyncDelay:      1,
-		MaxRetries:     3,
-		DownloadMedia:  true,
-		MaxImageSize:   10485760, // 10MB
-		LogLevel:       "info",
-		KeepLogDays:    30,
-		ChannelsJSON:   "[]",
-		Connected:      false,
-		Authenticated:  false,
+		AutoReconnect:       true,
+		ReconnectDelay:      5,
+		SyncDelay:           1,
+		MaxRetries:          3,
+		DownloadMedia:       true,
+		MaxImageSize:        10485760, // 10MB
+		LogLevel:            "info",
+		KeepLogDays:         30,
+		ChannelsJSON:        "[]",
+		Connected:           false,
+		Authenticated:       false,
+		groupedMessages:     make(map[int64][]groupedMessage),
+		groupedProcessDelay: 2 * time.Second, // 等待2秒收集同组消息
 	}
 }
 
@@ -340,6 +357,35 @@ func (p *TelegramChannelSync) handleChannelMessage(ctx context.Context, channelI
 		zap.Int("message_id", msg.ID),
 		zap.String("text", truncateMsgText(msg.Message, 50)))
 
+	// === 调试：输出消息详细信息 ===
+	groupedID, hasGroupedID := msg.GetGroupedID()
+	fmt.Printf("=== [DEBUG] 消息详细信息 ===\n")
+	fmt.Printf("  MessageID: %d\n", msg.ID)
+	fmt.Printf("  GroupedID: %d (hasGroupedID: %v)\n", groupedID, hasGroupedID)
+	fmt.Printf("  Text: %s\n", truncateMsgText(msg.Message, 200))
+	fmt.Printf("  HasMedia: %v\n", msg.Media != nil)
+	if msg.Media != nil {
+		fmt.Printf("  MediaType: %T\n", msg.Media)
+		switch m := msg.Media.(type) {
+		case *tg.MessageMediaPhoto:
+			fmt.Printf("  Media: Photo\n")
+			if photo, ok := m.Photo.(*tg.Photo); ok {
+				fmt.Printf("    PhotoID: %d\n", photo.ID)
+				fmt.Printf("    Sizes count: %d\n", len(photo.Sizes))
+			}
+		case *tg.MessageMediaDocument:
+			fmt.Printf("  Media: Document\n")
+			if doc, ok := m.Document.(*tg.Document); ok {
+				fmt.Printf("    DocID: %d\n", doc.ID)
+				fmt.Printf("    MimeType: %s\n", doc.MimeType)
+				fmt.Printf("    Size: %d\n", doc.Size)
+			}
+		default:
+			fmt.Printf("  Media: Unknown type %T\n", m)
+		}
+	}
+	fmt.Printf("=== [DEBUG] 消息详细信息结束 ===\n")
+
 	// 重新解析频道配置（确保最新）
 	p.mu.Lock()
 	if err := p.parseChannels(); err != nil {
@@ -399,9 +445,160 @@ func (p *TelegramChannelSync) handleChannelMessage(ctx context.Context, channelI
 		}
 	}
 
+	// === 处理分组消息（多图消息） ===
+	if hasGroupedID && groupedID != 0 {
+		p.handleGroupedMessage(ctx, channelID, channelConfig, msg, groupedID)
+		return
+	}
+
+	// === 处理普通消息（单图或纯文本） ===
+	p.processSingleMessage(ctx, channelID, channelConfig, msg)
+}
+
+// handleGroupedMessage 处理分组消息（多图消息）
+func (p *TelegramChannelSync) handleGroupedMessage(ctx context.Context, channelID int64, channelConfig *telegram_sync.ChannelConfig, msg *tg.Message, groupedID int64) {
+	p.groupedMessagesMu.Lock()
+	defer p.groupedMessagesMu.Unlock()
+
+	fmt.Printf("=== [GroupedID] 处理分组消息: groupedID=%d, messageID=%d ===\n", groupedID, msg.ID)
+
+	// 添加到缓存
+	p.groupedMessages[groupedID] = append(p.groupedMessages[groupedID], groupedMessage{
+		channelID:  channelID,
+		messageID:  msg.ID,
+		groupedID:  groupedID,
+		msg:        msg,
+		receivedAt: time.Now(),
+	})
+
+	currentCount := len(p.groupedMessages[groupedID])
+	fmt.Printf("=== [GroupedID] 当前缓存消息数: %d ===\n", currentCount)
+
+	// 检查是否已经有定时器处理这个分组
+	// 如果是第一条消息，启动定时器等待其他消息
+	if currentCount == 1 {
+		fmt.Printf("=== [GroupedID] 启动定时器，等待 %v 后处理 ===\n", p.groupedProcessDelay)
+		p.wg.Add(1)
+		go func() {
+			defer p.wg.Done()
+			time.Sleep(p.groupedProcessDelay)
+
+			p.processGroupedMessages(ctx, groupedID)
+		}()
+	}
+}
+
+// processGroupedMessages 处理缓存的分组消息
+func (p *TelegramChannelSync) processGroupedMessages(ctx context.Context, groupedID int64) {
+	p.groupedMessagesMu.Lock()
+	messages := p.groupedMessages[groupedID]
+	// 清理缓存
+	delete(p.groupedMessages, groupedID)
+	p.groupedMessagesMu.Unlock()
+
+	if len(messages) == 0 {
+		return
+	}
+
+	fmt.Printf("=== [GroupedID] 开始处理分组消息: groupedID=%d, 消息数=%d ===\n", groupedID, len(messages))
+
+	// 获取频道配置（使用第一条消息的频道）
+	channelID := messages[0].channelID
+	channelConfig := p.GetChannelByID(channelID)
+	if channelConfig == nil {
+		p.ctx.Log.Warn("频道未配置监听", zap.Int64("channel_id", channelID))
+		return
+	}
+
+	// 检查所有消息是否都已处理
+	allProcessed := true
+	for _, gm := range messages {
+		if !p.CheckMessageDuplicate(channelID, int64(gm.messageID)) {
+			allProcessed = false
+			break
+		}
+	}
+	if allProcessed {
+		p.ctx.Log.Info("分组消息已全部处理，跳过", zap.Int64("grouped_id", groupedID))
+		return
+	}
+
+	// 按 messageID 排序，保持图片顺序
+	sort.Slice(messages, func(i, j int) bool {
+		return messages[i].messageID < messages[j].messageID
+	})
+
+	// 收集所有媒体和文本
+	var allMediaInfos []telegram_sync.MessageMediaInfo
+	var textParts []string
+	var entities []tg.MessageEntityClass
+
+	for _, gm := range messages {
+		// 处理媒体
+		if p.mediaHandler != nil && gm.msg.Media != nil && p.DownloadMedia {
+			p.mediaHandler.SetAPI(p.client.GetAPI())
+			mediaInfos, err := p.mediaHandler.ProcessMedia(ctx, gm.msg, channelID, int64(gm.messageID))
+			if err != nil {
+				p.ctx.Log.Warn("处理媒体失败", zap.Error(err), zap.Int("message_id", gm.messageID))
+			}
+			allMediaInfos = append(allMediaInfos, mediaInfos...)
+		}
+
+		// 收集文本（只取第一条有文本的消息）
+		if gm.msg.Message != "" && len(textParts) == 0 {
+			textParts = append(textParts, gm.msg.Message)
+			entities = gm.msg.Entities
+		}
+	}
+
+	fmt.Printf("=== [GroupedID] 收集完成: 媒体数=%d, 文本=%s ===\n", len(allMediaInfos), truncateMsgText(strings.Join(textParts, ""), 50))
+
+	// 提取标题和内容
+	text := strings.Join(textParts, "")
+	title := extractTitleFromMessage(text)
+	contentHTML := p.convertToHTMLWithEntities(text, entities)
+
+	// 使用第一个图片作为缩略图
+	var thumbnailURL string
+	if len(allMediaInfos) > 0 {
+		thumbnailURL = allMediaInfos[0].URL
+	}
+
+	// 创建文章（包含所有媒体）
+	article, err := p.CreateArticle(&telegram_sync.TelegramChannel{
+		ChannelID:     channelID,
+		CategoryID:    channelConfig.CategoryID,
+		ArticleStatus: true,
+	}, title, contentHTML, thumbnailURL, allMediaInfos)
+
+	if err != nil {
+		p.ctx.Log.Error("创建文章失败", zap.Error(err))
+		// 记录所有消息的失败日志
+		for _, gm := range messages {
+			p.RecordSyncLog(channelID, int64(gm.messageID), 0, 0, err.Error(), title)
+		}
+		return
+	}
+
+	// 记录所有消息的成功日志
+	for _, gm := range messages {
+		p.RecordSyncLog(channelID, int64(gm.messageID), article.ID, 1, "", title)
+	}
+
+	p.ctx.Log.Info("分组文章创建成功",
+		zap.Int64("channel_id", channelID),
+		zap.Int64("grouped_id", groupedID),
+		zap.Int("media_count", len(allMediaInfos)),
+		zap.Int("article_id", article.ID))
+
+	fmt.Printf("=== [GroupedID] 文章创建成功: articleID=%d, 媒体数=%d ===\n", article.ID, len(allMediaInfos))
+}
+
+// processSingleMessage 处理普通消息（单图或纯文本）
+func (p *TelegramChannelSync) processSingleMessage(ctx context.Context, channelID int64, channelConfig *telegram_sync.ChannelConfig, msg *tg.Message) {
 	p.ctx.Log.Info("开始创建文章", zap.Int64("channel_id", channelID), zap.Int("message_id", msg.ID))
 
-	// 4. 处理媒体
+	// 处理媒体
 	var mediaInfos []telegram_sync.MessageMediaInfo
 	var thumbnailURL string
 	if p.mediaHandler != nil && msg.Media != nil && p.DownloadMedia {
@@ -418,16 +615,16 @@ func (p *TelegramChannelSync) handleChannelMessage(ctx context.Context, channelI
 		}
 	}
 
-	// 5. 提取标题和内容
+	// 提取标题和内容（保留样式）
 	title := extractTitleFromMessage(msg.Message)
-	content := msg.Message
+	contentHTML := p.convertToHTMLWithEntities(msg.Message, msg.Entities)
 
-	// 6. 创建文章（包含媒体信息）
+	// 创建文章（包含媒体信息）
 	article, err := p.CreateArticle(&telegram_sync.TelegramChannel{
 		ChannelID:     channelID,
 		CategoryID:    channelConfig.CategoryID,
 		ArticleStatus: true, // 发布状态
-	}, title, content, thumbnailURL, mediaInfos)
+	}, title, contentHTML, thumbnailURL, mediaInfos)
 
 	if err != nil {
 		p.ctx.Log.Error("创建文章失败", zap.Error(err))
@@ -435,7 +632,7 @@ func (p *TelegramChannelSync) handleChannelMessage(ctx context.Context, channelI
 		return
 	}
 
-	// 7. 记录成功日志（包含媒体信息）
+	// 记录成功日志（包含媒体信息）
 	p.RecordSyncLog(channelID, int64(msg.ID), article.ID, 1, "", title)
 
 	p.ctx.Log.Info("文章创建成功",
@@ -454,9 +651,10 @@ func extractTitleFromMessage(text string) string {
 	lines := strings.Split(text, "\n")
 	title := strings.TrimSpace(lines[0])
 
-	// 限制标题长度
-	if len(title) > 100 {
-		title = title[:100] + "..."
+	// 限制标题长度（按字符截断，避免破坏 UTF-8 编码）
+	runes := []rune(title)
+	if len(runes) > 50 {
+		title = string(runes[:50]) + "..."
 	}
 
 	return title
@@ -612,6 +810,110 @@ func (p *TelegramChannelSync) convertToHTML(text string) string {
 	lines := strings.Split(text, "\n")
 	var htmlLines []string
 
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed != "" {
+			htmlLines = append(htmlLines, fmt.Sprintf("<p>%s</p>", trimmed))
+		}
+	}
+
+	return strings.Join(htmlLines, "\n")
+}
+
+// convertToHTMLWithEntities 将 Telegram 消息转换为 HTML，保留样式实体
+func (p *TelegramChannelSync) convertToHTMLWithEntities(text string, entities []tg.MessageEntityClass) string {
+	if text == "" {
+		return ""
+	}
+
+	// 如果没有实体，使用简单的段落转换
+	if len(entities) == 0 {
+		return p.convertToHTML(text)
+	}
+
+	// 将文本转为 rune 数组以正确处理 UTF-8
+	runes := []rune(text)
+
+	// 创建实体位置映射
+	type entityPos struct {
+		offset int
+		length int
+		entity tg.MessageEntityClass
+	}
+
+	var positions []entityPos
+	for _, e := range entities {
+		switch ent := e.(type) {
+		case *tg.MessageEntityBold:
+			positions = append(positions, entityPos{offset: ent.Offset, length: ent.Length, entity: e})
+		case *tg.MessageEntityItalic:
+			positions = append(positions, entityPos{offset: ent.Offset, length: ent.Length, entity: e})
+		case *tg.MessageEntityUnderline:
+			positions = append(positions, entityPos{offset: ent.Offset, length: ent.Length, entity: e})
+		case *tg.MessageEntityStrike:
+			positions = append(positions, entityPos{offset: ent.Offset, length: ent.Length, entity: e})
+		case *tg.MessageEntityCode:
+			positions = append(positions, entityPos{offset: ent.Offset, length: ent.Length, entity: e})
+		case *tg.MessageEntityPre:
+			positions = append(positions, entityPos{offset: ent.Offset, length: ent.Length, entity: e})
+		case *tg.MessageEntityTextURL:
+			positions = append(positions, entityPos{offset: ent.Offset, length: ent.Length, entity: e})
+		case *tg.MessageEntityURL:
+			positions = append(positions, entityPos{offset: ent.Offset, length: ent.Length, entity: e})
+		}
+	}
+
+	// 按偏移量排序
+	sort.Slice(positions, func(i, j int) bool {
+		return positions[i].offset < positions[j].offset
+	})
+
+	// 构建带样式的文本
+	var result strings.Builder
+	lastPos := 0
+
+	for _, pos := range positions {
+		// 添加未格式化的文本
+		if pos.offset > lastPos {
+			result.WriteString(string(runes[lastPos:pos.offset]))
+		}
+
+		// 获取实体文本
+		entityText := string(runes[pos.offset : pos.offset+pos.length])
+
+		// 根据实体类型添加 HTML 标签
+		switch ent := pos.entity.(type) {
+		case *tg.MessageEntityBold:
+			result.WriteString(fmt.Sprintf("<strong>%s</strong>", entityText))
+		case *tg.MessageEntityItalic:
+			result.WriteString(fmt.Sprintf("<em>%s</em>", entityText))
+		case *tg.MessageEntityUnderline:
+			result.WriteString(fmt.Sprintf("<u>%s</u>", entityText))
+		case *tg.MessageEntityStrike:
+			result.WriteString(fmt.Sprintf("<del>%s</del>", entityText))
+		case *tg.MessageEntityCode:
+			result.WriteString(fmt.Sprintf("<code>%s</code>", entityText))
+		case *tg.MessageEntityPre:
+			result.WriteString(fmt.Sprintf("<pre><code>%s</code></pre>", entityText))
+		case *tg.MessageEntityTextURL:
+			result.WriteString(fmt.Sprintf("<a href=\"%s\">%s</a>", ent.URL, entityText))
+		case *tg.MessageEntityURL:
+			result.WriteString(fmt.Sprintf("<a href=\"%s\">%s</a>", entityText, entityText))
+		default:
+			result.WriteString(entityText)
+		}
+
+		lastPos = pos.offset + pos.length
+	}
+
+	// 添加剩余文本
+	if lastPos < len(runes) {
+		result.WriteString(string(runes[lastPos:]))
+	}
+
+	// 按换行符分割并包装成段落
+	lines := strings.Split(result.String(), "\n")
+	var htmlLines []string
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
 		if trimmed != "" {
