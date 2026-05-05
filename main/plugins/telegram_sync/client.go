@@ -557,12 +557,13 @@ func (c *Client) GetReconnectStatus() map[string]interface{} {
 	}
 }
 
-// truncateMsgText 截断文本
+// truncateMsgText 截断文本（按字符截断，避免破坏 UTF-8 编码）
 func truncateMsgText(text string, maxLen int) string {
-	if len(text) <= maxLen {
+	runes := []rune(text)
+	if len(runes) <= maxLen {
 		return text
 	}
-	return text[:maxLen] + "..."
+	return string(runes[:maxLen]) + "..."
 }
 
 // SendAuthCode 发送验证码（需要客户端已启动）

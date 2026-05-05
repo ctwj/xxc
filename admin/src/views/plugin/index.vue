@@ -121,8 +121,23 @@
     loadingKeep: 400,
     onBefore:()=>{visibleOptions.value=true},
     onSuccess:(resp,[id])=>{
-      currentOptionsData.value = resp
-      currentOptionsComponent.value = defineAsyncComponent(optionsComponents['./options/'+id+'.vue'])
+      // 确保 resp 是有效对象，否则使用空对象
+      currentOptionsData.value = resp || {}
+      // 检查组件是否存在
+      const componentPath = './options/'+id+'.vue'
+      const componentLoader = optionsComponents[componentPath]
+      if (componentLoader) {
+        currentOptionsComponent.value = defineAsyncComponent(componentLoader)
+      } else {
+        console.error('Component not found:', componentPath)
+        Message.error('组件未找到: ' + id)
+        visibleOptions.value = false
+      }
+  },
+  onError:(error)=>{
+    console.error('Failed to load plugin options:', error)
+    Message.error('加载插件配置失败')
+    visibleOptions.value = false
   }})
   const { run:runSaveOptions, loading:loadingSaveOptions } = useRequest(pluginSaveOptions,{manual:true,onSuccess:(resp)=>{ resp.success ? Message.success(t('message.success',[t('save')])):'' }})
   const loadingRunObj = ref({})

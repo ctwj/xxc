@@ -2,12 +2,19 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Volume2, VolumeX, Clock, Share2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Clock, Share2, ChevronLeft, ChevronRight } from 'lucide-react';
+import dynamic from 'next/dynamic';
 import { InfoCardData } from '@/types';
 import { cn } from '@/lib/utils';
 import { formatRelativeTime } from '@/lib/utils';
 import { ImagePreview } from './ImagePreview';
 import { LongTextReader } from './LongTextReader';
+
+// 动态导入 Plyr，避免 SSR 问题
+const Plyr = dynamic(() => import('plyr-react').then(mod => ({ default: mod.Plyr })), {
+  ssr: false,
+  loading: () => <div className="w-full h-full bg-black flex items-center justify-center text-white">加载播放器...</div>
+});
 
 interface InfoCardProps {
   data: InfoCardData;
@@ -18,21 +25,10 @@ interface InfoCardProps {
 }
 
 export const InfoCard: React.FC<InfoCardProps> = ({ data, style, className, isCurrent, onShare }) => {
-  const [isMuted, setIsMuted] = useState(true);
   const [isExpanded, setIsExpanded] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [showImagePreview, setShowImagePreview] = useState(false);
   const [previewImageIndex, setPreviewImageIndex] = useState(0);
-  const videoRef = useRef<HTMLVideoElement>(null);
-
-  // 离开当前卡片时自动暂停视频
-  useEffect(() => {
-    if (!isCurrent && videoRef.current) {
-      videoRef.current.pause();
-    } else if (isCurrent && videoRef.current && (data.type === 'video' || data.type === 'video-text' || data.type === 'images-video-text')) {
-      videoRef.current.play().catch(e => console.log('Auto play blocked', e));
-    }
-  }, [isCurrent, data.type]);
 
   // 重置图片索引
   useEffect(() => {
@@ -221,6 +217,17 @@ export const InfoCard: React.FC<InfoCardProps> = ({ data, style, className, isCu
         );
 
       case 'images-video-text':
+        const imagesVideoOptions = {
+          controls: ['play-large', 'play', 'progress', 'current-time', 'duration', 'mute', 'volume', 'fullscreen'],
+          autoplay: false,
+          muted: true,
+          loop: { active: true },
+        };
+        const imagesVideoSrc = {
+          type: 'video' as const,
+          sources: [{ src: data.videoUrl || '', type: 'video/mp4' }],
+          poster: data.coverUrl || '',
+        };
         return (
           <div className="flex flex-col w-full h-full bg-card overflow-hidden">
             {/* 图片轮播区域 */}
@@ -268,24 +275,10 @@ export const InfoCard: React.FC<InfoCardProps> = ({ data, style, className, isCu
 
             {/* 视频区域 */}
             <div className="relative h-[35%] w-full overflow-hidden bg-black">
-              <video
-                ref={videoRef}
-                src={data.videoUrl}
-                className="w-full h-full object-cover"
-                muted={isMuted}
-                loop
-                playsInline
-                poster={data.coverUrl}
+              <Plyr
+                options={imagesVideoOptions}
+                source={imagesVideoSrc}
               />
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setIsMuted(!isMuted);
-                }}
-                className="absolute top-2 right-2 p-2 bg-black/30 backdrop-blur-md rounded-full text-white/80 hover:bg-black/50 transition-colors z-10"
-              >
-                {isMuted ? <VolumeX size={16} /> : <Volume2 size={16} />}
-              </button>
             </div>
 
             {/* 文字区域 */}
@@ -298,52 +291,51 @@ export const InfoCard: React.FC<InfoCardProps> = ({ data, style, className, isCu
 
       case 'video':
       case 'video-text':
+        // 视频源：优先使用 videoUrl，否则使用 mediaUrl
+        const videoSource = data.videoUrl || data.mediaUrl || '';
+        const videoOptions = {
+          controls: ['play-large', 'play', 'progress', 'current-time', 'duration', 'mute', 'volume', 'settings', 'fullscreen'],
+          settings: ['quality', 'speed'],
+          autoplay: isCurrent,
+          muted: true,
+          loop: { active: true },
+        };
+        const videoSrc = {
+          type: 'video' as const,
+          sources: [
+            {
+              src: videoSource as string,
+              type: 'video/mp4',
+            },
+          ],
+          poster: (data.coverUrl || data.mediaUrl || '') as string,
+        };
+
+        // video-text 类型：上下分栏布局，文字紧贴视频
+        if (data.type === 'video-text') {
+          return (
+            <div className="flex flex-col w-full h-full bg-card overflow-hidden">
+              <div className="flex-shrink-0 w-full" style={{ height: 'auto', maxHeight: '60%' }}>
+                <Plyr options={videoOptions} source={videoSrc} />
+              </div>
+              <div className="flex-1 w-full p-6 flex flex-col justify-center overflow-y-auto">
+                {data.title && <h2 className="text-xl font-bold mb-2 gradient-text">{data.title}</h2>}
+                {data.content && <p className="text-foreground/70 leading-relaxed text-sm line-clamp-4">{data.content}</p>}
+              </div>
+            </div>
+          );
+        }
+
+        // 纯视频类型
         return (
           <div className="relative w-full h-full overflow-hidden bg-black">
-            <video
-              ref={videoRef}
-              src={data.mediaUrl}
-              className={cn(
-                "w-full h-full object-cover",
-                data.type === 'video-text' ? "h-[65%]" : "h-full"
-              )}
-              muted={isMuted}
-              loop
-              playsInline
-              poster={data.coverUrl}
-            />
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                setIsMuted(!isMuted);
-              }}
-              className="absolute top-8 right-8 p-3 bg-black/30 backdrop-blur-md rounded-full text-white/80 hover:bg-black/50 transition-colors z-10"
-            >
-              {isMuted ? <VolumeX size={20} /> : <Volume2 size={20} />}
-            </button>
-
-            {data.type === 'video' && (
-              <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent pointer-events-none" />
-            )}
-
-            <div className={cn(
-              "absolute left-0 right-0 p-8 flex flex-col justify-end",
-              data.type === 'video-text'
-                ? "bottom-0 h-[35%] bg-card"
-                : "bottom-24 bg-gradient-to-t from-black/80 to-transparent"
-            )}>
-              {data.title && (
-                <h2 className={cn(
-                  "text-2xl font-bold mb-2",
-                  data.type === 'video-text' ? "text-foreground" : "text-white"
-                )}>{data.title}</h2>
-              )}
-              {data.content && (
-                <p className={cn(
-                  "line-clamp-3 text-sm md:text-base",
-                  data.type === 'video-text' ? "text-foreground/70" : "text-white/70"
-                )}>{data.content}</p>
-              )}
+            <div className="w-full h-full">
+              <Plyr options={videoOptions} source={videoSrc} />
+            </div>
+            <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent pointer-events-none" />
+            <div className="absolute left-0 right-0 bottom-24 p-8 flex flex-col justify-end pointer-events-none">
+              {data.title && <h2 className="text-2xl font-bold mb-2 text-white">{data.title}</h2>}
+              {data.content && <p className="line-clamp-3 text-sm md:text-base text-white/70">{data.content}</p>}
             </div>
           </div>
         );

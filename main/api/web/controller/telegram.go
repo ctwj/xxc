@@ -2,10 +2,11 @@ package controller
 
 import (
 	"errors"
+	"strconv"
+
 	"github.com/gofiber/fiber/v2"
 	"moss/api/web/mapper"
 	"moss/domain/support/service"
-	"strconv"
 )
 
 // TelegramSendCodeRequest 发送验证码请求
@@ -37,6 +38,11 @@ type TelegramLogInterface interface {
 // TelegramMediaInterface 定义媒体接口
 type TelegramMediaInterface interface {
 	GetMediaURL(mediaId int64) (string, error)
+}
+
+// TelegramMediaDownloadInterface 定义媒体下载接口
+type TelegramMediaDownloadInterface interface {
+	DownloadMediaFile(mediaId int64) ([]byte, string, error)
 }
 
 // TelegramSendCode 发送 Telegram 验证码
@@ -264,7 +270,7 @@ func TelegramPublicChannels(ctx *fiber.Ctx) error {
 	return ctx.JSON(mapper.MessageResultData(channels, nil))
 }
 
-// TelegramGetMedia 获取媒体文件
+// TelegramGetMedia 获取媒体文件（返回下载代理）
 func TelegramGetMedia(ctx *fiber.Ctx) error {
 	mediaIdStr := ctx.Params("mediaId")
 	mediaId, err := strconv.ParseInt(mediaIdStr, 10, 64)
@@ -278,7 +284,20 @@ func TelegramGetMedia(ctx *fiber.Ctx) error {
 		return ctx.JSON(mapper.MessageResultData(nil, err))
 	}
 
-	// 类型断言获取媒体接口
+	// 尝试下载接口
+	downloadPlugin, ok := plugin.Entry.(TelegramMediaDownloadInterface)
+	if ok {
+		data, mimeType, err := downloadPlugin.DownloadMediaFile(mediaId)
+		if err != nil {
+			return ctx.Status(404).JSON(mapper.MessageResultData(nil, err))
+		}
+		// 设置 Content-Type 并返回文件内容
+		ctx.Set("Content-Type", mimeType)
+		ctx.Set("Cache-Control", "public, max-age=31536000") // 缓存一年
+		return ctx.Send(data)
+	}
+
+	// 降级到 URL 接口
 	mediaPlugin, ok := plugin.Entry.(TelegramMediaInterface)
 	if !ok {
 		return ctx.JSON(mapper.MessageResultData(nil, errors.New("plugin does not support media interface")))

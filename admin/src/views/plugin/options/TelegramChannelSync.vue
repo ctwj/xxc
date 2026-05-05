@@ -262,7 +262,10 @@ const data = inject('options')
 
 // 初始化默认值
 function initDefaults() {
-  if (data.value == null) data.value = {}
+  // 确保 data.value 存在
+  if (!data.value) {
+    data.value = {}
+  }
 
   // 处理 channels_json -> channels 转换
   if (data.value.channels == null) {
@@ -309,8 +312,10 @@ watch(() => data.value?.channels, (newChannels) => {
 // 立即初始化
 initDefaults()
 
-// 自动检查会话状态
-checkSession()
+// 延迟检查会话状态（等待组件完全加载）
+setTimeout(() => {
+  checkSession()
+}, 100)
 
 const sendingCode = ref(false)
 const verifyingCode = ref(false)

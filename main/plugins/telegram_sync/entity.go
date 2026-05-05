@@ -133,12 +133,19 @@ type SyncLogItem struct {
 
 // MessageMediaInfo 消息媒体信息（用于文章创建）
 type MessageMediaInfo struct {
-	MediaID   int64  `json:"media_id"`
-	MediaType string `json:"media_type"`
-	URL       string `json:"url"`
-	Filename  string `json:"filename"`
-	Width     int    `json:"width"`
-	Height    int    `json:"height"`
+	MediaID        int64  `json:"media_id"`
+	MediaType      string `json:"media_type"`
+	URL            string `json:"url"`
+	AccessHash     int64  `json:"access_hash"`
+	FileReference  []byte `json:"file_reference"`
+	Filename       string `json:"filename"`
+	Width          int    `json:"width"`
+	Height         int    `json:"height"`
+	// 视频封面信息
+	ThumbURL        string `json:"thumb_url"`
+	ThumbID         int64  `json:"thumb_id"`
+	ThumbAccessHash int64  `json:"thumb_access_hash"`
+	ThumbFileRef    []byte `json:"thumb_file_ref"`
 }
 
 // GetCreateTimeFormat 格式化创建时间

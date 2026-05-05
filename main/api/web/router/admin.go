@@ -28,6 +28,8 @@ func (r *Router) api(route fiber.Router) {
 	// 公开的 Telegram 调试 API（仅用于开发调试）
 	route.Get("/plugin/telegram/public/debug", controller.TelegramPublicDebug)
 	route.Get("/plugin/telegram/public/channels", controller.TelegramPublicChannels)
+	// 公开的 Telegram 媒体 API（用于前端展示）
+	route.Get("/telegram/media/:mediaId", controller.TelegramGetMedia)
 
 	route.Use(auth())
 
@@ -145,7 +147,6 @@ func (r *Router) api(route fiber.Router) {
 	route.Get("/plugin/telegram/debug", controller.TelegramDebugStatus)
 	route.Get("/plugin/telegram/checkSession", controller.TelegramCheckSession)
 	route.Get("/plugin/telegram/logs", controller.TelegramGetLogs)
-	route.Get("/plugin/telegram/media/:mediaId", controller.TelegramGetMedia)
 
 	// dashboard
 	route.Get("/dashboard/:id", controller.Dashboard.Controller)

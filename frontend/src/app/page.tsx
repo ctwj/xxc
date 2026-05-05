@@ -11,16 +11,27 @@ import { toast } from 'sonner';
 import { useTheme } from '@/contexts/ThemeContext';
 import { api } from '@/lib/api';
 
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:9008";
+
+// Convert relative URL to absolute URL
+function toAbsoluteUrl(url: string | undefined): string | undefined {
+  if (!url) return undefined;
+  // Already absolute URL
+  if (url.startsWith('http://') || url.startsWith('https://')) return url;
+  // Relative URL - prepend API base URL
+  return `${API_BASE_URL}${url}`;
+}
+
 // Convert Article to InfoCardData
 function articleToCardData(article: Article): InfoCardData {
   // Parse mediaUrls if it's a JSON string
   let mediaUrls: string[] = [];
   if (article.mediaUrls) {
     try {
-      mediaUrls = JSON.parse(article.mediaUrls);
+      mediaUrls = JSON.parse(article.mediaUrls).map(toAbsoluteUrl);
     } catch {
       // If not valid JSON, treat as single URL
-      mediaUrls = article.mediaUrls ? [article.mediaUrls] : [];
+      mediaUrls = article.mediaUrls ? [toAbsoluteUrl(article.mediaUrls)!] : [];
     }
   }
 
@@ -47,10 +58,10 @@ function articleToCardData(article: Article): InfoCardData {
     type,
     title: article.title,
     content: article.description,
-    mediaUrl: article.thumbnail,
+    mediaUrl: toAbsoluteUrl(article.thumbnail),
     mediaUrls,
-    videoUrl: article.videoUrl,
-    coverUrl: article.coverUrl,
+    videoUrl: toAbsoluteUrl(article.videoUrl),
+    coverUrl: toAbsoluteUrl(article.coverUrl),
     tag: article.tag || '未分类',
     publishTime: new Date(article.createTime * 1000).toISOString(),
     isNew: Date.now() - article.createTime * 1000 < 24 * 60 * 60 * 1000, // Within 24 hours

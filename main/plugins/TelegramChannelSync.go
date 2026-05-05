@@ -462,12 +462,14 @@ func extractTitleFromMessage(text string) string {
 	return title
 }
 
-// truncateMsgText 截断消息文本
+// truncateMsgText 截断消息文本（按字符截断，避免破坏 UTF-8 编码）
 func truncateMsgText(text string, maxLen int) string {
-	if len(text) <= maxLen {
+	// 使用 rune 来正确处理 UTF-8 字符
+	runes := []rune(text)
+	if len(runes) <= maxLen {
 		return text
 	}
-	return text[:maxLen] + "..."
+	return string(runes[:maxLen]) + "..."
 }
 
 // GetStatus 获取插件状态
@@ -526,8 +528,11 @@ func (p *TelegramChannelSync) CreateArticle(channel *telegram_sync.TelegramChann
 		// 视频类型单独处理
 		if info.MediaType == "video" && info.URL != "" {
 			videoURL = info.URL
-			// 如果没有封面，使用视频第一帧作为封面
-			if coverURL == "" {
+			// 优先使用视频封面缩略图
+			if info.ThumbURL != "" {
+				coverURL = info.ThumbURL
+			} else if coverURL == "" {
+				// 如果没有封面，使用视频 URL（浏览器会显示第一帧）
 				coverURL = info.URL
 			}
 		}
@@ -577,14 +582,16 @@ func (p *TelegramChannelSync) CreateArticle(channel *telegram_sync.TelegramChann
 	if len(mediaInfos) > 0 {
 		for _, info := range mediaInfos {
 			media := &telegram_sync.TelegramMedia{
-				MediaID:     info.MediaID,
-				MediaType:   info.MediaType,
-				ChannelID:   channel.ChannelID,
-				Filename:    info.Filename,
-				Width:       info.Width,
-				Height:      info.Height,
-				StorageURL:  info.URL,
-				CreateTime:  time.Now().Unix(),
+				MediaID:       info.MediaID,
+				MediaType:     info.MediaType,
+				AccessHash:    info.AccessHash,
+				FileReference: info.FileReference,
+				ChannelID:     channel.ChannelID,
+				Filename:      info.Filename,
+				Width:         info.Width,
+				Height:        info.Height,
+				StorageURL:    info.URL,
+				CreateTime:    time.Now().Unix(),
 			}
 			if err := db.DB.Create(media).Error; err != nil {
 				p.ctx.Log.Warn("保存媒体记录失败", zap.Error(err), zap.Int64("media_id", info.MediaID))
@@ -665,12 +672,13 @@ func (p *TelegramChannelSync) GetRecentLogs(limit int) (interface{}, error) {
 	return logs, nil
 }
 
-// truncateDescription 截断描述
+// truncateDescription 截断描述（按字符截断，避免破坏 UTF-8 编码）
 func truncateDescription(content string, maxLen int) string {
-	if len(content) <= maxLen {
+	runes := []rune(content)
+	if len(runes) <= maxLen {
 		return content
 	}
-	return content[:maxLen] + "..."
+	return string(runes[:maxLen]) + "..."
 }
 
 // GetChannelByID 根据频道 ID 获取频道配置
@@ -991,10 +999,54 @@ func (p *TelegramChannelSync) GetMediaURL(mediaId int64) (string, error) {
 	if err := db.DB.Where("media_id = ?", mediaId).First(&media).Error; err != nil {
 		return "", fmt.Errorf("media not found: %w", err)
 	}
-	
+
 	if media.StorageURL == "" {
 		return "", fmt.Errorf("media URL not available")
 	}
-	
+
 	return media.StorageURL, nil
+}
+
+// DownloadMediaFile 下载媒体文件并返回内容
+func (p *TelegramChannelSync) DownloadMediaFile(mediaId int64) ([]byte, string, error) {
+	// 从数据库查询媒体信息
+	var media telegram_sync.TelegramMedia
+	if err := db.DB.Where("media_id = ?", mediaId).First(&media).Error; err != nil {
+		return nil, "", fmt.Errorf("media not found: %w", err)
+	}
+
+	// 检查客户端是否可用
+	if p.client == nil || p.client.GetAPI() == nil {
+		return nil, "", fmt.Errorf("telegram client not available")
+	}
+
+	// 增加超时时间，大文件下载需要更长时间
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+
+	// 使用 MediaHandler 下载
+	if p.mediaHandler != nil {
+		p.mediaHandler.SetAPI(p.client.GetAPI())
+		data, mimeType, err := p.mediaHandler.DownloadMediaByID(
+			ctx,
+			media.MediaID,
+			media.AccessHash,
+			media.FileReference,
+			media.MediaType,
+		)
+		if err != nil {
+			p.ctx.Log.Error("下载媒体失败", zap.Error(err), zap.Int64("media_id", mediaId))
+			return nil, "", err
+		}
+
+		// 如果有存储 URL，说明已经上传过，直接从存储获取
+		if media.StorageURL != "" && strings.HasPrefix(media.StorageURL, "/upload/") {
+			// 尝试从本地存储读取
+			// 这里返回下载的数据，后续可以考虑缓存
+		}
+
+		return data, mimeType, nil
+	}
+
+	return nil, "", fmt.Errorf("media handler not available")
 }
