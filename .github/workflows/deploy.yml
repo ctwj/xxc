@@ -13,6 +13,9 @@ on:
 jobs:
   deploy:
     runs-on: self-hosted
+    env:
+      SUPERVISORCTL: /www/server/panel/pyenv/bin/supervisorctl
+      PROCESS_NAME: moss:moss_00
     steps:
       - name: Download release asset
         run: |
@@ -52,7 +55,7 @@ jobs:
 
       - name: Stop service
         run: |
-          sudo /www/server/panel/pyenv/bin/supervisorctl stop moss || true
+          sudo $SUPERVISORCTL stop $PROCESS_NAME || true
 
       - name: Backup current binary
         run: |
@@ -69,9 +72,9 @@ jobs:
 
       - name: Start service
         run: |
-          sudo /www/server/panel/pyenv/bin/supervisorctl start moss
+          sudo $SUPERVISORCTL start $PROCESS_NAME
           sleep 3
-          sudo /www/server/panel/pyenv/bin/supervisorctl status moss
+          sudo $SUPERVISORCTL status $PROCESS_NAME
 
       - name: Health check
         run: |
@@ -80,9 +83,9 @@ jobs:
           if [ "$HTTP_CODE" != "200" ]; then
             echo "Health check failed! HTTP Code: $HTTP_CODE"
             echo "Rolling back..."
-            sudo /www/server/panel/pyenv/bin/supervisorctl stop moss
+            sudo $SUPERVISORCTL stop $PROCESS_NAME
             sudo mv /opt/moss/moss.bak /opt/moss/moss
-            sudo /www/server/panel/pyenv/bin/supervisorctl start moss
+            sudo $SUPERVISORCTL start $PROCESS_NAME
             exit 1
           fi
           echo "Health check passed! Service is running."
