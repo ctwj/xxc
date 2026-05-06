@@ -13,8 +13,6 @@ on:
 jobs:
   deploy:
     runs-on: self-hosted
-    env:
-      SUPERVISORCTL: /www/server/panel/pyenv/bin/supervisorctl
     steps:
       - name: Download release asset
         run: |
@@ -31,13 +29,16 @@ jobs:
           echo "Available assets:"
           echo "$RESPONSE" | grep -oP '"name": "[^"]+"' | head -10
 
-          # Try to find linux amd64 asset
-          DOWNLOAD_URL=$(echo "$RESPONSE" | grep -oP '"browser_download_url": "\K[^"]+linux_amd64[^"]*"')
+          # Find moss_linux_amd64 asset (exact match)
+          DOWNLOAD_URL=$(echo "$RESPONSE" | grep -oP '"browser_download_url": "\K[^"]+moss_linux_amd64"')
 
           if [ -z "$DOWNLOAD_URL" ]; then
-            echo "Error: Could not find linux_amd64 asset"
+            echo "Error: Could not find moss_linux_amd64 asset"
             exit 1
           fi
+
+          # Remove trailing quote if present
+          DOWNLOAD_URL="${DOWNLOAD_URL%\"}"
 
           echo "Download URL: $DOWNLOAD_URL"
           curl -L -o /tmp/moss_new "$DOWNLOAD_URL"
@@ -51,7 +52,7 @@ jobs:
 
       - name: Stop service
         run: |
-          sudo $SUPERVISORCTL stop moss || true
+          sudo /www/server/panel/pyenv/bin/supervisorctl stop moss || true
 
       - name: Backup current binary
         run: |
@@ -68,9 +69,9 @@ jobs:
 
       - name: Start service
         run: |
-          sudo $SUPERVISORCTL start moss
+          sudo /www/server/panel/pyenv/bin/supervisorctl start moss
           sleep 3
-          sudo $SUPERVISORCTL status moss
+          sudo /www/server/panel/pyenv/bin/supervisorctl status moss
 
       - name: Health check
         run: |
@@ -79,9 +80,9 @@ jobs:
           if [ "$HTTP_CODE" != "200" ]; then
             echo "Health check failed! HTTP Code: $HTTP_CODE"
             echo "Rolling back..."
-            sudo $SUPERVISORCTL stop moss
+            sudo /www/server/panel/pyenv/bin/supervisorctl stop moss
             sudo mv /opt/moss/moss.bak /opt/moss/moss
-            sudo $SUPERVISORCTL start moss
+            sudo /www/server/panel/pyenv/bin/supervisorctl start moss
             exit 1
           fi
           echo "Health check passed! Service is running."
