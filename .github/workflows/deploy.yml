@@ -3,6 +3,12 @@ name: Deploy to VPS
 on:
   release:
     types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version to deploy (leave empty for latest)'
+        required: false
+        default: ''
 
 jobs:
   deploy:
@@ -10,8 +16,13 @@ jobs:
     steps:
       - name: Download release asset
         run: |
-          DOWNLOAD_URL=$(curl -s https://api.github.com/repos/${{ github.repository }}/releases/latest \
-            | grep -oP '"browser_download_url": "\K[^"]+moss_linux_amd64[^"]*')
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            DOWNLOAD_URL=$(curl -s https://api.github.com/repos/${{ github.repository }}/releases/tags/${{ github.event.inputs.version }} \
+              | grep -oP '"browser_download_url": "\K[^"]+moss_linux_amd64[^"]*"')
+          else
+            DOWNLOAD_URL=$(curl -s https://api.github.com/repos/${{ github.repository }}/releases/latest \
+              | grep -oP '"browser_download_url": "\K[^"]+moss_linux_amd64[^"]*"')
+          fi
           echo "Download URL: $DOWNLOAD_URL"
           curl -L -o /tmp/moss_new "$DOWNLOAD_URL"
 
