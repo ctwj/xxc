@@ -21,8 +21,10 @@ jobs:
         run: |
           mkdir -p dist
           tar -xzf frontend.tar.gz -C dist
+          # 移动 admin 目录内容到 dist 根目录
+          shopt -s dotglob
           mv dist/admin/* dist/
-          rmdir dist/admin
+          rm -rf dist/admin
 
       - name: Copy vercel.json
         run: |
