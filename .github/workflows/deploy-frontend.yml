@@ -1,0 +1,39 @@
+name: Deploy Frontend to Vercel
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download frontend artifact
+        run: |
+          DOWNLOAD_URL=$(curl -s https://api.github.com/repos/${{ github.repository }}/releases/latest \
+            | grep -oP '"browser_download_url": "\K[^"]+frontend.tar.gz"')
+          DOWNLOAD_URL="${DOWNLOAD_URL%\"}"
+          echo "Download URL: $DOWNLOAD_URL"
+          curl -L -o frontend.tar.gz "$DOWNLOAD_URL"
+
+      - name: Extract frontend
+        run: |
+          mkdir -p dist
+          tar -xzf frontend.tar.gz -C dist
+          mv dist/admin/* dist/
+          rmdir dist/admin
+
+      - name: Copy vercel.json
+        run: |
+          curl -sO https://raw.githubusercontent.com/${{ github.repository }}/main/deploy/vercel/vercel.json
+          mv vercel.json dist/
+
+      - name: Deploy to Vercel
+        uses: amondnet/vercel-action@v25
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+          working-directory: dist
+          production: true
