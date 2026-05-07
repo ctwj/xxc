@@ -22,7 +22,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: frontend
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --frozen-lockfile && pnpm approve-builds
 
       - name: Build frontend
         working-directory: frontend
