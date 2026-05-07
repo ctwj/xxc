@@ -18,6 +18,54 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
+  build-admin:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Install pnpm
+        run: npm install -g pnpm
+
+      - name: Install admin dependencies
+        working-directory: admin
+        run: pnpm install --frozen-lockfile
+
+      - name: Build admin
+        working-directory: admin
+        run: pnpm run build
+        env:
+          NODE_ENV: production
+
+      - name: Verify admin build
+        run: |
+          echo "=== Checking build output ==="
+          ls -la main/resources/admin/
+          echo ""
+          echo "=== Assets directory ==="
+          ls -la main/resources/admin/assets/ || echo "No assets directory!"
+          echo ""
+          if [ ! -f "main/resources/admin/index.html" ]; then
+            echo "Error: index.html not found"
+            exit 1
+          fi
+          if [ ! -d "main/resources/admin/assets" ]; then
+            echo "Error: assets directory not found"
+            exit 1
+          fi
+          echo "Admin build verified successfully"
+
+      - name: Upload admin artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: admin
+          path: main/resources/admin
+
   build-frontend:
     runs-on: ubuntu-latest
     steps:
@@ -33,49 +81,29 @@ jobs:
         run: npm install -g pnpm
 
       - name: Install frontend dependencies
-        working-directory: admin
+        working-directory: frontend
         run: pnpm install --frozen-lockfile
 
       - name: Build frontend
-        working-directory: admin
+        working-directory: frontend
         run: pnpm run build
         env:
-          NODE_ENV: production
+          NEXT_PUBLIC_API_URL: ${{ secrets.API_URL }}
 
       - name: Verify frontend build
         run: |
           echo "=== Checking build output ==="
-          ls -la main/resources/admin/
-          echo ""
-          echo "=== Assets directory ==="
-          ls -la main/resources/admin/assets/ || echo "No assets directory!"
-          echo ""
-          echo "=== index.html content ==="
-          cat main/resources/admin/index.html
-          echo ""
-          if [ ! -f "main/resources/admin/index.html" ]; then
-            echo "Error: index.html not found"
+          ls -la frontend/.next/
+          if [ ! -d "frontend/.next" ]; then
+            echo "Error: .next directory not found"
             exit 1
-          fi
-          if [ ! -d "main/resources/admin/assets" ]; then
-            echo "Error: assets directory not found"
-            exit 1
-          fi
-          if ! grep -q "assets/index" main/resources/admin/index.html; then
-            echo "Error: index.html missing JS references"
-            exit 1
-          fi
-          ASSET_COUNT=$(ls main/resources/admin/assets/ | wc -l)
-          echo "Assets count: $ASSET_COUNT"
-          if [ "$ASSET_COUNT" -lt 10 ]; then
-            echo "Warning: Too few assets files, build may be incomplete"
           fi
           echo "Frontend build verified successfully"
 
       - name: Package frontend
         run: |
-          cd main/resources
-          tar -czvf ../../frontend.tar.gz admin/
+          cd frontend
+          tar -czvf ../frontend.tar.gz .next public package.json next.config.ts vercel.json
 
       - name: Upload frontend artifact
         uses: actions/upload-artifact@v4
@@ -84,7 +112,7 @@ jobs:
           path: frontend.tar.gz
 
   build-backend:
-    needs: build-frontend
+    needs: build-admin
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -99,15 +127,11 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Download frontend artifact
+      - name: Download admin artifact
         uses: actions/download-artifact@v4
         with:
-          name: frontend
-          path: .
-
-      - name: Extract frontend
-        run: |
-          tar -xzvf frontend.tar.gz -C main/resources/
+          name: admin
+          path: main/resources/admin
 
       - name: Setup Go
         uses: actions/setup-go@v5
@@ -145,7 +169,7 @@ jobs:
           path: moss_${{ matrix.goos }}_${{ matrix.goarch }}
 
   release:
-    needs: build-backend
+    needs: [build-backend, build-frontend]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code

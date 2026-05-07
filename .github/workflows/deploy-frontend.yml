@@ -12,26 +12,23 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Download frontend artifact
-        run: |
-          DOWNLOAD_URL=$(curl -s https://api.github.com/repos/${{ github.repository }}/releases/latest \
-            | grep -oP '"browser_download_url": "\K[^"]+frontend.tar.gz"')
-          DOWNLOAD_URL="${DOWNLOAD_URL%\"}"
-          echo "Download URL: $DOWNLOAD_URL"
-          curl -L -o frontend.tar.gz "$DOWNLOAD_URL"
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
 
-      - name: Extract frontend
-        run: |
-          mkdir -p dist
-          tar -xzf frontend.tar.gz -C dist
-          # 移动 admin 目录内容到 dist 根目录
-          shopt -s dotglob
-          mv dist/admin/* dist/
-          rm -rf dist/admin
+      - name: Install pnpm
+        run: npm install -g pnpm
 
-      - name: Copy vercel.json
-        run: |
-          cp deploy/vercel/vercel.json dist/
+      - name: Install dependencies
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: Build frontend
+        working-directory: frontend
+        run: pnpm run build
+        env:
+          NEXT_PUBLIC_API_URL: ${{ secrets.API_URL }}
 
       - name: Deploy to Vercel
         uses: amondnet/vercel-action@v25
@@ -39,6 +36,6 @@ jobs:
           vercel-token: ${{ secrets.VERCEL_TOKEN }}
           vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
           vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
-          working-directory: dist
+          working-directory: frontend
           vercel-args: '--prod'
           vercel-version: 'latest'
