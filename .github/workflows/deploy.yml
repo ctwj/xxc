@@ -1,0 +1,96 @@
+name: Deploy to VPS
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version to deploy (leave empty for latest)'
+        required: false
+        default: ''
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+    env:
+      SUPERVISORCTL: /www/server/panel/pyenv/bin/supervisorctl
+      PROCESS_NAME: moss:moss_00
+    steps:
+      - name: Download release asset
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            API_URL="https://api.github.com/repos/${{ github.repository }}/releases/tags/${{ github.event.inputs.version }}"
+          else
+            API_URL="https://api.github.com/repos/${{ github.repository }}/releases/latest"
+          fi
+
+          echo "Fetching release from: $API_URL"
+          RESPONSE=$(curl -s "$API_URL")
+
+          # Debug: show available assets
+          echo "Available assets:"
+          echo "$RESPONSE" | grep -oP '"name": "[^"]+"' | head -10
+
+          # Find moss_linux_amd64 asset (exact match)
+          DOWNLOAD_URL=$(echo "$RESPONSE" | grep -oP '"browser_download_url": "\K[^"]+moss_linux_amd64"')
+
+          if [ -z "$DOWNLOAD_URL" ]; then
+            echo "Error: Could not find moss_linux_amd64 asset"
+            exit 1
+          fi
+
+          # Remove trailing quote if present
+          DOWNLOAD_URL="${DOWNLOAD_URL%\"}"
+
+          echo "Download URL: $DOWNLOAD_URL"
+          curl -L -o /tmp/moss_new "$DOWNLOAD_URL"
+
+          # Verify download
+          if [ ! -s /tmp/moss_new ]; then
+            echo "Error: Downloaded file is empty"
+            exit 1
+          fi
+          echo "Downloaded file size: $(ls -lh /tmp/moss_new | awk '{print $5}')"
+
+      - name: Stop service
+        run: |
+          sudo $SUPERVISORCTL stop $PROCESS_NAME || true
+
+      - name: Backup current binary
+        run: |
+          if [ -f "/opt/moss/moss" ]; then
+            sudo cp /opt/moss/moss /opt/moss/moss.bak
+            echo "Backup created: /opt/moss/moss.bak"
+          fi
+
+      - name: Deploy new binary
+        run: |
+          sudo mv /tmp/moss_new /opt/moss/moss
+          sudo chmod +x /opt/moss/moss
+          echo "Binary deployed to /opt/moss/moss"
+
+      - name: Start service
+        run: |
+          sudo $SUPERVISORCTL start $PROCESS_NAME
+          sleep 3
+          sudo $SUPERVISORCTL status $PROCESS_NAME
+
+      - name: Health check
+        run: |
+          sleep 5
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:9008/admin/api/admin/exists)
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "Health check failed! HTTP Code: $HTTP_CODE"
+            echo "Rolling back..."
+            sudo $SUPERVISORCTL stop $PROCESS_NAME
+            sudo mv /opt/moss/moss.bak /opt/moss/moss
+            sudo $SUPERVISORCTL start $PROCESS_NAME
+            exit 1
+          fi
+          echo "Health check passed! Service is running."
+
+      - name: Cleanup backup
+        run: |
+          sudo rm -f /opt/moss/moss.bak
+          echo "Backup cleaned up"

@@ -25,6 +25,12 @@ func (r *Router) api(route fiber.Router) {
 	route.Get("/admin/captcha", controller.AdminCaptcha)
 	route.Post("/admin/login", controller.AdminLogin)
 
+	// 公开的 Telegram 调试 API（仅用于开发调试）
+	route.Get("/plugin/telegram/public/debug", controller.TelegramPublicDebug)
+	route.Get("/plugin/telegram/public/channels", controller.TelegramPublicChannels)
+	// 公开的 Telegram 媒体 API（用于前端展示）
+	route.Get("/telegram/media/:mediaId", controller.TelegramGetMedia)
+
 	route.Use(auth())
 
 	// router
@@ -131,6 +137,16 @@ func (r *Router) api(route fiber.Router) {
 	route.Post("/plugin/testCookie/:id", controller.PluginTestCookie)
 	route.Post("/plugin/getDirectories/:id", controller.PluginGetDirectories)
 	route.Get("/plugin/previewWatermark/:id", controller.PluginPreviewWatermark)
+
+	// telegram auth (TelegramChannelSync plugin)
+	route.Post("/plugin/telegram/sendCode", controller.TelegramSendCode)
+	route.Post("/plugin/telegram/verifyCode", controller.TelegramVerifyCode)
+	route.Get("/plugin/telegram/status", controller.TelegramAuthStatus)
+	route.Get("/plugin/telegram/channels", controller.TelegramGetChannels)
+	route.Post("/plugin/telegram/clearAuth", controller.TelegramClearAuth)
+	route.Get("/plugin/telegram/debug", controller.TelegramDebugStatus)
+	route.Get("/plugin/telegram/checkSession", controller.TelegramCheckSession)
+	route.Get("/plugin/telegram/logs", controller.TelegramGetLogs)
 
 	// dashboard
 	route.Get("/dashboard/:id", controller.Dashboard.Controller)
