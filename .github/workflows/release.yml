@@ -34,9 +34,7 @@ jobs:
 
       - name: Install admin dependencies
         working-directory: admin
-        run: |
-          pnpm install --frozen-lockfile
-          pnpm approve-builds --all
+        run: pnpm install --frozen-lockfile
 
       - name: Build admin
         working-directory: admin

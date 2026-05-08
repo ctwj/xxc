@@ -1,0 +1,7 @@
+packages:
+  - '.'
+
+onlyBuiltDependencies:
+  - esbuild
+  - less
+  - vue-demi
