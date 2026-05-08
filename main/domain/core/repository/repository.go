@@ -33,4 +33,8 @@ func MigrateTable() {
 	if err := Store.MigrateTable(); err != nil {
 		log.Error("migrate store table error", log.Err(err))
 	}
+
+	if err := User.MigrateTable(); err != nil {
+		log.Error("migrate user table error", log.Err(err))
+	}
 }

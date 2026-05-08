@@ -10,6 +10,11 @@ type UserRepository struct{}
 
 var User = &UserRepository{}
 
+// MigrateTable creates the user table if it doesn't exist
+func (r *UserRepository) MigrateTable() error {
+	return db.DB.AutoMigrate(&entity.User{})
+}
+
 // Create creates a new user
 func (r *UserRepository) Create(user *entity.User) error {
 	return db.DB.Create(user).Error
