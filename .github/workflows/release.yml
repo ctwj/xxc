@@ -34,7 +34,7 @@ jobs:
 
       - name: Install admin dependencies
         working-directory: admin
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --frozen-lockfile --ignore-scripts=false
 
       - name: Build admin
         working-directory: admin
@@ -103,6 +103,8 @@ jobs:
       - name: Package frontend
         run: |
           cd frontend
+          # Create public directory if it doesn't exist
+          mkdir -p public
           tar -czvf ../frontend.tar.gz .next public package.json next.config.ts vercel.json
 
       - name: Upload frontend artifact
