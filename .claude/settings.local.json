@@ -4,7 +4,13 @@
       "Bash(git add *)",
       "Bash(git commit -m 'fix: remove secret reference from vercel.json *)",
       "Bash(git push *)",
-      "Bash(powershell *)"
+      "Bash(powershell *)",
+      "Bash(go build *)",
+      "Bash(./main.exe)",
+      "Bash(curl -X POST http://localhost:9008/api/auth/register -H \"Content-Type: application/json\" -d '{\"username\":\"testuser\",\"email\":\"test@example.com\",\"password\":\"password123\"}')",
+      "Bash(curl *)",
+      "Bash(sqlite3 *)",
+      "Bash(git commit -m ' *)"
     ]
   }
 }

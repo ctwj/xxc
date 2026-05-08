@@ -93,36 +93,33 @@ GORM handles migrations automatically.
 6. **Storage Drivers**: Supports local, S3, OSS, COS, FTP, B2 - configured via admin panel
 
 <!-- SPECKIT START -->
-## Active Feature: Fix CORS Configuration
+## Active Feature: Fix UI Theme Toggle and User Registration
 
-**Branch**: `004-fix-cors-config`
-**Plan**: [specs/004-fix-cors-config/plan.md](specs/004-fix-cors-config/plan.md)
+**Branch**: `005-fix-ui-registration`
+**Plan**: [specs/005-fix-ui-registration/plan.md](specs/005-fix-ui-registration/plan.md)
 **Status**: Planning Complete
 
 ### Key Documents
-- [Specification](specs/004-fix-cors-config/spec.md)
-- [Research](specs/004-fix-cors-config/research.md)
-- [Data Model](specs/004-fix-cors-config/data-model.md)
-- [API Contracts](specs/004-fix-cors-config/contracts/api.md)
-- [Quickstart](specs/004-fix-cors-config/quickstart.md)
+- [Specification](specs/005-fix-ui-registration/spec.md)
+- [Research](specs/005-fix-ui-registration/research.md)
+- [Data Model](specs/005-fix-ui-registration/data-model.md)
+- [API Contracts](specs/005-fix-ui-registration/contracts/api.md)
+- [Quickstart](specs/005-fix-ui-registration/quickstart.md)
 
-### Problem
-Frontend at `https://www.l9.lc` cannot communicate with backend API at `https://api.l9.lc` due to CORS errors.
+### Problem 1: Theme Toggle
+Dark/light mode toggle not displaying correctly when switching themes in admin panel.
 
-### Root Cause
-The `cors_origins` configuration field exists in the code but:
-1. Admin UI field was missing (now added)
-2. Admin frontend needs to be rebuilt and deployed
-3. Configuration needs to be saved to database
+### Problem 2: User Registration
+Registration fails with `{"error":"failed to create user","success":false}`.
+
+### Root Cause (Registration)
+The `user` table is never created because:
+1. `UserRepository` has no `MigrateTable()` method
+2. `repository.MigrateTable()` in `main/domain/core/repository/repository.go` doesn't call User migration
 
 ### Solution
-1. Rebuild admin frontend with CORS Origins field
-2. Deploy new binary
-3. Configure CORS origins via admin panel
-
-### Files Modified
-- `admin/src/views/config/module/router/options.vue` - Added CORS Origins input field
-- `main/api/web/middleware/cors.go` - CORS middleware (already correct)
-- `main/domain/config/entity/router.go` - Router config entity (already correct)
+1. Add `MigrateTable()` method to `UserRepository` in `main/domain/core/repository/user.go`
+2. Add `User.MigrateTable()` call to `repository.MigrateTable()` in `main/domain/core/repository/repository.go`
+3. Compare theme implementation with `xxc.zip` reference code
 <!-- SPECKIT END -->
 
