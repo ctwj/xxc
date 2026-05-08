@@ -35,15 +35,8 @@ jobs:
       - name: Install admin dependencies
         working-directory: admin
         run: |
-          # Add pnpm.allowBuilds to package.json to allow build scripts
-          node -e "
-            const fs = require('fs');
-            const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
-            if (!pkg.pnpm) pkg.pnpm = {};
-            pkg.pnpm.onlyBuiltDependencies = ['esbuild', 'less', 'vue-demi'];
-            fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2));
-          "
           pnpm install --frozen-lockfile
+          pnpm approve-builds --all
 
       - name: Build admin
         working-directory: admin
