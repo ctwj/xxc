@@ -6,22 +6,24 @@
     <a-tab-pane key="options" :title="$t('options')">
       <Options />
     </a-tab-pane>
-
+    <a-tab-pane key="cors" title="CORS">
+      <Cors />
+    </a-tab-pane>
     <a-tab-pane key="pprof" title="pprof">
       <Pprof />
     </a-tab-pane>
-
   </a-tabs>
 
   <a-divider />
-  
+
 </template>
 
 <script setup>
   import Rules from './router/rules.vue'
   import Options from './router/options.vue'
+  import Cors from './router/cors.vue'
   import Pprof from './router/pprof.vue'
-  
+
   import {inject} from 'vue'
   import {routerReload} from "@/api";
   import {useRequest} from 'vue-request'

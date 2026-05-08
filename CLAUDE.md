@@ -93,57 +93,36 @@ GORM handles migrations automatically.
 6. **Storage Drivers**: Supports local, S3, OSS, COS, FTP, B2 - configured via admin panel
 
 <!-- SPECKIT START -->
-## Active Feature: Telegram Channel Sync
+## Active Feature: Fix CORS Configuration
 
-**Branch**: `002-telegram-channel-sync`
-**Plan**: [specs/002-telegram-channel-sync/plan.md](specs/002-telegram-channel-sync/plan.md)
+**Branch**: `004-fix-cors-config`
+**Plan**: [specs/004-fix-cors-config/plan.md](specs/004-fix-cors-config/plan.md)
 **Status**: Planning Complete
 
 ### Key Documents
-- [Specification](specs/002-telegram-channel-sync/spec.md)
-- [Research](specs/002-telegram-channel-sync/research.md)
-- [Data Model](specs/002-telegram-channel-sync/data-model.md)
-- [API Contracts](specs/002-telegram-channel-sync/contracts/api.md)
-- [Quickstart](specs/002-telegram-channel-sync/quickstart.md)
+- [Specification](specs/004-fix-cors-config/spec.md)
+- [Research](specs/004-fix-cors-config/research.md)
+- [Data Model](specs/004-fix-cors-config/data-model.md)
+- [API Contracts](specs/004-fix-cors-config/contracts/api.md)
+- [Quickstart](specs/004-fix-cors-config/quickstart.md)
 
-### Architecture Decision
-Moss 插件模式：使用 gotd/td 库监听 Telegram 频道，自动同步消息为 CMS 文章
+### Problem
+Frontend at `https://www.l9.lc` cannot communicate with backend API at `https://api.l9.lc` due to CORS errors.
 
-### Implementation Summary
+### Root Cause
+The `cors_origins` configuration field exists in the code but:
+1. Admin UI field was missing (now added)
+2. Admin frontend needs to be rebuilt and deployed
+3. Configuration needs to be saved to database
 
-#### Plugin Structure (简化架构)
-- **Main Plugin**: `main/plugins/TelegramChannelSync.go` - 包含实体定义和核心逻辑
-- **Sub Package**: `main/plugins/telegram_sync/` - 可选，用于拆分复杂逻辑
-  - `client.go` - Telegram 客户端管理
-  - `handler.go` - 消息处理与更新分发
-  - `filter.go` - 消息过滤规则引擎
-  - `media.go` - 媒体下载与处理
-  - `session.go` - 会话持久化（加密存储）
+### Solution
+1. Rebuild admin frontend with CORS Origins field
+2. Deploy new binary
+3. Configure CORS origins via admin panel
 
-#### Frontend Admin
-- **Config Component**: `admin/src/views/plugin/options/TelegramChannelSync.vue`
-- 集成到 Moss 现有的插件配置界面
-
-**Note**: 所有后端代码集中在 `main/plugins/` 目录，复用现有 Article/Category 实体和服务，不创建独立的 entity/repository/service/controller 文件。前端只需添加一个配置表单组件。
-
-### Key Features
-1. Telegram 客户端连接与会话持久化
-2. 频道配置管理（增删改查）
-3. 消息过滤规则（关键词白名单/黑名单、类型、长度）
-4. 图片媒体下载与上传
-5. 同步状态监控与日志
-
-### Dependencies
-- gotd/td - Telegram MTProto client library
-
-### Development Commands
-
-```bash
-# Add dependency
-cd main && go get github.com/gotd/td@latest
-
-# Run with plugin
-task dev
-```
+### Files Modified
+- `admin/src/views/config/module/router/options.vue` - Added CORS Origins input field
+- `main/api/web/middleware/cors.go` - CORS middleware (already correct)
+- `main/domain/config/entity/router.go` - Router config entity (already correct)
 <!-- SPECKIT END -->
 
