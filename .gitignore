@@ -102,3 +102,4 @@ demo1/
 scripts/*
 runtime/
 .vercel
+.claude
