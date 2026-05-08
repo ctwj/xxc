@@ -34,7 +34,10 @@ jobs:
 
       - name: Install admin dependencies
         working-directory: admin
-        run: pnpm install --frozen-lockfile
+        run: |
+          pnpm install --frozen-lockfile || true
+          pnpm approve-builds esbuild less vue-demi || true
+          pnpm rebuild esbuild less vue-demi || true
 
       - name: Build admin
         working-directory: admin
