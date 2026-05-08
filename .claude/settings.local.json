@@ -4,7 +4,12 @@
       "Bash(git add *)",
       "Bash(git commit -m 'fix: remove secret reference from vercel.json *)",
       "Bash(git push *)",
-      "Bash(powershell *)"
+      "Bash(powershell *)",
+      "Bash(git restore *)",
+      "Bash(git commit -m 'fix: add .npmrc to allow build scripts for admin dependencies *)",
+      "Bash(git checkout *)",
+      "Bash(git merge *)",
+      "Bash(git commit -m 'fix: resolve build issues in GitHub Actions *)"
     ]
   }
 }
