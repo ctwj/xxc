@@ -93,33 +93,28 @@ GORM handles migrations automatically.
 6. **Storage Drivers**: Supports local, S3, OSS, COS, FTP, B2 - configured via admin panel
 
 <!-- SPECKIT START -->
-## Active Feature: Fix UI Theme Toggle and User Registration
+## Active Feature: 修复 TelegramSync 频道消息同步
 
-**Branch**: `005-fix-ui-registration`
-**Plan**: [specs/005-fix-ui-registration/plan.md](specs/005-fix-ui-registration/plan.md)
+**Branch**: `006-fix-telegram-channel-sync`
+**Plan**: [specs/006-fix-telegram-channel-sync/plan.md](specs/006-fix-telegram-channel-sync/plan.md)
 **Status**: Planning Complete
 
 ### Key Documents
-- [Specification](specs/005-fix-ui-registration/spec.md)
-- [Research](specs/005-fix-ui-registration/research.md)
-- [Data Model](specs/005-fix-ui-registration/data-model.md)
-- [API Contracts](specs/005-fix-ui-registration/contracts/api.md)
-- [Quickstart](specs/005-fix-ui-registration/quickstart.md)
+- [Specification](specs/006-fix-telegram-channel-sync/spec.md)
+- [Research](specs/006-fix-telegram-channel-sync/research.md)
+- [Data Model](specs/006-fix-telegram-channel-sync/data-model.md)
+- [API Contracts](specs/006-fix-telegram-channel-sync/contracts/api.md)
+- [Quickstart](specs/006-fix-telegram-channel-sync/quickstart.md)
 
-### Problem 1: Theme Toggle
-Dark/light mode toggle not displaying correctly when switching themes in admin panel.
+### Problem
+TelegramSync 插件在群组中正常工作，但绑定广播频道后不产生文章。
 
-### Problem 2: User Registration
-Registration fails with `{"error":"failed to create user","success":false}`.
-
-### Root Cause (Registration)
-The `user` table is never created because:
-1. `UserRepository` has no `MigrateTable()` method
-2. `repository.MigrateTable()` in `main/domain/core/repository/repository.go` doesn't call User migration
+### Root Cause
+`updates.Manager` 缺少 `AccessHasher` 配置，导致 `UpdateNewChannelMessage` 被静默丢弃。群组消息走不同路径（不需要 access hash），所以正常。
 
 ### Solution
-1. Add `MigrateTable()` method to `UserRepository` in `main/domain/core/repository/user.go`
-2. Add `User.MigrateTable()` call to `repository.MigrateTable()` in `main/domain/core/repository/repository.go`
-3. Compare theme implementation with `xxc.zip` reference code
+1. 实现自定义 `ChannelAccessHasher`，从频道配置中提供 access hash
+2. 配置到 `updates.Config.AccessHasher`
+3. 修复 `p.channels = enabledChannels` 覆盖 bug
 <!-- SPECKIT END -->
 

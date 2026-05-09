@@ -119,6 +119,7 @@ type ChannelConfig struct {
 	FilterMessageTypes string `json:"filter_message_types"`
 	FilterMinLength    int    `json:"filter_min_length"`
 	FilterMaxLength    int    `json:"filter_max_length"`
+	AccessHash         int64  `json:"access_hash"` // 频道 access hash，用于 updates.Manager
 }
 
 // SyncLogItem 同步日志项（用于前端显示）

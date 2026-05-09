@@ -13,6 +13,33 @@ import (
 	"go.uber.org/zap"
 )
 
+// channelAccessHasher 实现 gotd/td 的 ChannelAccessHasher 接口
+// 用于为 updates.Manager 提供频道 access hash，解决广播频道消息被丢弃的问题
+type channelAccessHasher struct {
+	hashes map[int64]int64
+	mu     sync.RWMutex
+}
+
+func newChannelAccessHasher() *channelAccessHasher {
+	return &channelAccessHasher{
+		hashes: make(map[int64]int64),
+	}
+}
+
+func (h *channelAccessHasher) GetChannelAccessHash(ctx context.Context, userID int64, channelID int64) (int64, bool, error) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	hash, ok := h.hashes[channelID]
+	return hash, ok, nil
+}
+
+func (h *channelAccessHasher) SetChannelAccessHash(ctx context.Context, userID int64, channelID int64, hash int64) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.hashes[channelID] = hash
+	return nil
+}
+
 // Client Telegram 客户端封装
 type Client struct {
 	config       *ClientConfig
@@ -24,6 +51,7 @@ type Client struct {
 	// 更新管理器
 	dispatcher   tg.UpdateDispatcher
 	updatesMgr   *updates.Manager
+	accessHasher *channelAccessHasher
 
 	// 状态
 	connected    bool
@@ -102,9 +130,13 @@ func NewClientWithStorage(config *ClientConfig, storage *DBStorage, log *zap.Log
 	// 创建更新分发器
 	c.dispatcher = tg.NewUpdateDispatcher()
 
+	// 创建频道 access hash 缓存
+	c.accessHasher = newChannelAccessHasher()
+
 	// 创建更新管理器（用于处理更新间隙和恢复）
 	c.updatesMgr = updates.New(updates.Config{
-		Handler: c.dispatcher,
+		Handler:      c.dispatcher,
+		AccessHasher: c.accessHasher,
 	})
 
 	// 设置更新处理回调
@@ -124,9 +156,33 @@ func NewClientWithStorage(config *ClientConfig, storage *DBStorage, log *zap.Log
 	return c, nil
 }
 
+// LoadAccessHashes 从频道配置批量加载 access hash 到缓存
+func (c *Client) LoadAccessHashes(channels []ChannelConfig) {
+	if c.accessHasher == nil {
+		return
+	}
+	c.accessHasher.mu.Lock()
+	defer c.accessHasher.mu.Unlock()
+	for _, ch := range channels {
+		if ch.AccessHash != 0 {
+			c.accessHasher.hashes[ch.ChannelID] = ch.AccessHash
+		}
+	}
+	c.log.Info("已加载频道 access hash", zap.Int("count", len(channels)))
+}
+
+// SetAccessHash 设置单个频道的 access hash
+func (c *Client) SetAccessHash(channelID int64, hash int64) {
+	if c.accessHasher == nil {
+		return
+	}
+	c.accessHasher.mu.Lock()
+	defer c.accessHasher.mu.Unlock()
+	c.accessHasher.hashes[channelID] = hash
+}
+
 // handleUpdate 处理所有 Telegram 更新（自定义 UpdateHandler）
 func (c *Client) handleUpdate(ctx context.Context, u tg.UpdatesClass) error {
-	fmt.Printf("=== handleUpdate 被调用: type=%T ===\n", u)
 	c.log.Info("=== handleUpdate 被调用 ===", zap.String("type", fmt.Sprintf("%T", u)))
 
 	switch update := u.(type) {
@@ -172,7 +228,6 @@ func (c *Client) handleSingleUpdate(ctx context.Context, u tg.UpdateClass) error
 
 // handleNewChannelMessage 处理新频道消息（符合 UpdateDispatcher 回调格式）
 func (c *Client) handleNewChannelMessage(ctx context.Context, e tg.Entities, u *tg.UpdateNewChannelMessage) error {
-	fmt.Printf("=== handleNewChannelMessage 被调用: type=%T ===\n", u.Message)
 	c.log.Info("=== handleNewChannelMessage 被调用 ===", zap.String("type", fmt.Sprintf("%T", u.Message)))
 
 	// 检查是否为消息
@@ -202,13 +257,19 @@ func (c *Client) handleNewChannelMessage(ctx context.Context, e tg.Entities, u *
 		zap.Int("message_id", msg.ID),
 		zap.String("text", truncateMsgText(msg.Message, 50)))
 
-	fmt.Printf("=== 收到频道消息: channelID=%d, messageID=%d, out=%v, text=%s ===\n",
-		channelID, msg.ID, msg.Out, truncateMsgText(msg.Message, 50))
 
 	// 忽略发出的消息
 	if msg.Out {
 		c.log.Debug("忽略发出的消息")
 		return nil
+	}
+
+	// 从消息实体中缓存频道的 access hash（供 updates.Manager 后续使用）
+	for _, ch := range e.Channels {
+		if ch.ID == channelID && ch.AccessHash != 0 {
+			c.SetAccessHash(channelID, ch.AccessHash)
+			c.log.Debug("从实体缓存 access hash", zap.Int64("channel_id", channelID))
+		}
 	}
 
 	// 调用消息处理回调
@@ -228,7 +289,6 @@ func (c *Client) handleNewChannelMessage(ctx context.Context, e tg.Entities, u *
 
 // handleNewMessage 处理新消息（群组/私聊）（符合 UpdateDispatcher 回调格式）
 func (c *Client) handleNewMessage(ctx context.Context, e tg.Entities, u *tg.UpdateNewMessage) error {
-	fmt.Printf("=== handleNewMessage 被调用: type=%T ===\n", u.Message)
 	c.log.Info("=== handleNewMessage 被调用 ===", zap.String("type", fmt.Sprintf("%T", u.Message)))
 
 	// 检查是否为消息
@@ -330,17 +390,13 @@ func (c *Client) Start(parentCtx context.Context) error {
 			users, err := c.api.UsersGetUsers(ctx, []tg.InputUserClass{&tg.InputUserSelf{}})
 			if err != nil {
 				c.log.Error("获取用户信息失败", zap.Error(err))
-				fmt.Printf("=== 获取用户信息失败: %v ===\n", err)
 				// 不返回错误，继续运行
 			} else {
-				fmt.Printf("=== 获取到 %d 个用户 ===\n", len(users))
 				var userID int64
 				if len(users) > 0 {
-					fmt.Printf("=== 用户类型: %T ===\n", users[0])
 					if user, ok := users[0].(*tg.User); ok {
 						userID = user.ID
 						c.log.Info("获取用户ID成功", zap.Int64("user_id", userID))
-						fmt.Printf("=== 用户ID: %d ===\n", userID)
 					}
 				}
 
@@ -356,11 +412,9 @@ func (c *Client) Start(parentCtx context.Context) error {
 							},
 						}); err != nil {
 							c.log.Error("updates.Manager 运行错误", zap.Error(err))
-							fmt.Printf("=== updates.Manager 运行错误: %v ===\n", err)
 						}
 					}()
 				} else {
-					fmt.Printf("=== updatesMgr=%v, userID=%d ===\n", c.updatesMgr != nil, userID)
 				}
 			}
 

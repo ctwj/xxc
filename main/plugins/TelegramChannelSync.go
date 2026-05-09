@@ -113,7 +113,6 @@ func (p *TelegramChannelSync) Load(ctx *pluginEntity.Plugin) error {
 
 	// 调试输出
 	fmt.Println("=== TelegramChannelSync 插件开始加载 ===")
-	fmt.Printf("AppID: %d, AppHash: %s, SessionKey: %s\n", p.AppID, p.AppHash, p.SessionKey)
 
 	// 创建插件级别的 context
 	p.pluginCtx, p.cancel = context.WithCancel(context.Background())
@@ -268,6 +267,11 @@ func (p *TelegramChannelSync) SaveChannels(channels []telegram_sync.ChannelConfi
 	p.channels = channels
 	p.mu.Unlock()
 
+	// 刷新 access hash 缓存到 updates.Manager
+	if p.client != nil {
+		p.client.LoadAccessHashes(channels)
+	}
+
 	return nil
 }
 
@@ -327,6 +331,15 @@ func (p *TelegramChannelSync) initClient() error {
 	p.ctx.Log.Info("设置消息处理回调")
 	p.client.SetMessageHandler(p.handleChannelMessage)
 
+	// 加载已配置频道的 access hash 到 updates.Manager
+	p.mu.RLock()
+	channels := p.channels
+	p.mu.RUnlock()
+	if len(channels) > 0 {
+		p.client.LoadAccessHashes(channels)
+		p.ctx.Log.Info("已加载频道 access hash", zap.Int("count", len(channels)))
+	}
+
 	// 如果有 session storage，启动客户端时会自动恢复会话
 	if storage != nil {
 		p.ctx.Log.Info("启动 Telegram 客户端...")
@@ -351,7 +364,6 @@ func (p *TelegramChannelSync) initClient() error {
 
 // handleChannelMessage 处理频道消息
 func (p *TelegramChannelSync) handleChannelMessage(ctx context.Context, channelID int64, msg *tg.Message) {
-	fmt.Printf("=== handleChannelMessage 被调用: channelID=%d, messageID=%d ===\n", channelID, msg.ID)
 	p.ctx.Log.Info("handleChannelMessage 被调用",
 		zap.Int64("channel_id", channelID),
 		zap.Int("message_id", msg.ID),
@@ -359,38 +371,22 @@ func (p *TelegramChannelSync) handleChannelMessage(ctx context.Context, channelI
 
 	// === 调试：输出消息详细信息 ===
 	groupedID, hasGroupedID := msg.GetGroupedID()
-	fmt.Printf("=== [DEBUG] 消息详细信息 ===\n")
-	fmt.Printf("  MessageID: %d\n", msg.ID)
-	fmt.Printf("  GroupedID: %d (hasGroupedID: %v)\n", groupedID, hasGroupedID)
-	fmt.Printf("  Text: %s\n", truncateMsgText(msg.Message, 200))
-	fmt.Printf("  HasMedia: %v\n", msg.Media != nil)
 	if msg.Media != nil {
-		fmt.Printf("  MediaType: %T\n", msg.Media)
 		switch m := msg.Media.(type) {
 		case *tg.MessageMediaPhoto:
-			fmt.Printf("  Media: Photo\n")
-			if photo, ok := m.Photo.(*tg.Photo); ok {
-				fmt.Printf("    PhotoID: %d\n", photo.ID)
-				fmt.Printf("    Sizes count: %d\n", len(photo.Sizes))
+			if _, ok := m.Photo.(*tg.Photo); ok {
 			}
 		case *tg.MessageMediaDocument:
-			fmt.Printf("  Media: Document\n")
-			if doc, ok := m.Document.(*tg.Document); ok {
-				fmt.Printf("    DocID: %d\n", doc.ID)
-				fmt.Printf("    MimeType: %s\n", doc.MimeType)
-				fmt.Printf("    Size: %d\n", doc.Size)
+			if _, ok := m.Document.(*tg.Document); ok {
 			}
 		default:
-			fmt.Printf("  Media: Unknown type %T\n", m)
 		}
 	}
-	fmt.Printf("=== [DEBUG] 消息详细信息结束 ===\n")
 
 	// 重新解析频道配置（确保最新）
 	p.mu.Lock()
 	if err := p.parseChannels(); err != nil {
 		p.ctx.Log.Warn("解析频道配置失败", zap.Error(err))
-		fmt.Printf("=== 解析频道配置失败: %v ===\n", err)
 	}
 	// 直接在持有锁的情况下获取启用的频道（避免死锁）
 	var enabledChannels []telegram_sync.ChannelConfig
@@ -401,10 +397,8 @@ func (p *TelegramChannelSync) handleChannelMessage(ctx context.Context, channelI
 	}
 	p.channels = enabledChannels
 	p.ctx.Log.Info("当前配置的频道列表", zap.Int("count", len(p.channels)))
-	fmt.Printf("=== 配置的频道数量: %d ===\n", len(p.channels))
 	for _, ch := range p.channels {
 		p.ctx.Log.Info("频道配置", zap.Int64("channel_id", ch.ChannelID), zap.String("name", ch.ChannelName), zap.Int("status", ch.Status))
-		fmt.Printf("=== 频道配置: channelID=%d, name=%s, status=%d ===\n", ch.ChannelID, ch.ChannelName, ch.Status)
 	}
 	p.mu.Unlock()
 
@@ -412,12 +406,10 @@ func (p *TelegramChannelSync) handleChannelMessage(ctx context.Context, channelI
 	channelConfig := p.GetChannelByID(channelID)
 	if channelConfig == nil {
 		p.ctx.Log.Warn("频道未配置监听，跳过处理", zap.Int64("channel_id", channelID))
-		fmt.Printf("=== 频道 %d 未配置监听，跳过 ===\n", channelID)
 		return
 	}
 
 	p.ctx.Log.Info("找到频道配置", zap.Int64("channel_id", channelID), zap.String("name", channelConfig.ChannelName), zap.Int("status", channelConfig.Status))
-	fmt.Printf("=== 找到频道配置: channelID=%d, name=%s, status=%d ===\n", channelID, channelConfig.ChannelName, channelConfig.Status)
 
 	// 2. 检查频道是否启用
 	if channelConfig.Status != 1 {
@@ -460,8 +452,6 @@ func (p *TelegramChannelSync) handleGroupedMessage(ctx context.Context, channelI
 	p.groupedMessagesMu.Lock()
 	defer p.groupedMessagesMu.Unlock()
 
-	fmt.Printf("=== [GroupedID] 处理分组消息: groupedID=%d, messageID=%d ===\n", groupedID, msg.ID)
-
 	// 添加到缓存
 	p.groupedMessages[groupedID] = append(p.groupedMessages[groupedID], groupedMessage{
 		channelID:  channelID,
@@ -472,12 +462,10 @@ func (p *TelegramChannelSync) handleGroupedMessage(ctx context.Context, channelI
 	})
 
 	currentCount := len(p.groupedMessages[groupedID])
-	fmt.Printf("=== [GroupedID] 当前缓存消息数: %d ===\n", currentCount)
 
 	// 检查是否已经有定时器处理这个分组
 	// 如果是第一条消息，启动定时器等待其他消息
 	if currentCount == 1 {
-		fmt.Printf("=== [GroupedID] 启动定时器，等待 %v 后处理 ===\n", p.groupedProcessDelay)
 		p.wg.Add(1)
 		go func() {
 			defer p.wg.Done()
@@ -499,8 +487,6 @@ func (p *TelegramChannelSync) processGroupedMessages(ctx context.Context, groupe
 	if len(messages) == 0 {
 		return
 	}
-
-	fmt.Printf("=== [GroupedID] 开始处理分组消息: groupedID=%d, 消息数=%d ===\n", groupedID, len(messages))
 
 	// 获取频道配置（使用第一条消息的频道）
 	channelID := messages[0].channelID
@@ -551,8 +537,6 @@ func (p *TelegramChannelSync) processGroupedMessages(ctx context.Context, groupe
 		}
 	}
 
-	fmt.Printf("=== [GroupedID] 收集完成: 媒体数=%d, 文本=%s ===\n", len(allMediaInfos), truncateMsgText(strings.Join(textParts, ""), 50))
-
 	// 提取标题和内容
 	text := strings.Join(textParts, "")
 	title := extractTitleFromMessage(text)
@@ -591,7 +575,6 @@ func (p *TelegramChannelSync) processGroupedMessages(ctx context.Context, groupe
 		zap.Int("media_count", len(allMediaInfos)),
 		zap.Int("article_id", article.ID))
 
-	fmt.Printf("=== [GroupedID] 文章创建成功: articleID=%d, 媒体数=%d ===\n", article.ID, len(allMediaInfos))
 }
 
 // processSingleMessage 处理普通消息（单图或纯文本）
