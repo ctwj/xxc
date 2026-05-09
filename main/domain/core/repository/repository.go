@@ -37,4 +37,16 @@ func MigrateTable() {
 	if err := User.MigrateTable(); err != nil {
 		log.Error("migrate user table error", log.Err(err))
 	}
+
+	if err := Favorite.MigrateTable(); err != nil {
+		log.Error("migrate favorite table error", log.Err(err))
+	}
+
+	if err := Like.MigrateTable(); err != nil {
+		log.Error("migrate like table error", log.Err(err))
+	}
+
+	if err := ViewHistory.MigrateTable(); err != nil {
+		log.Error("migrate view_history table error", log.Err(err))
+	}
 }

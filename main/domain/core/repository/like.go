@@ -10,6 +10,10 @@ type LikeRepository struct{}
 
 var Like = &LikeRepository{}
 
+func (r *LikeRepository) MigrateTable() error {
+	return db.DB.AutoMigrate(&entity.Like{})
+}
+
 // Create creates a new like
 func (r *LikeRepository) Create(like *entity.Like) error {
 	return db.DB.Create(like).Error

@@ -10,6 +10,10 @@ type FavoriteRepository struct{}
 
 var Favorite = &FavoriteRepository{}
 
+func (r *FavoriteRepository) MigrateTable() error {
+	return db.DB.AutoMigrate(&entity.Favorite{})
+}
+
 // Create creates a new favorite
 func (r *FavoriteRepository) Create(favorite *entity.Favorite) error {
 	return db.DB.Create(favorite).Error

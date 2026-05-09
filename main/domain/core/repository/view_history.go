@@ -12,6 +12,10 @@ type ViewHistoryRepository struct{}
 
 var ViewHistory = &ViewHistoryRepository{}
 
+func (r *ViewHistoryRepository) MigrateTable() error {
+	return db.DB.AutoMigrate(&entity.ViewHistory{})
+}
+
 // Create creates a new view history
 func (r *ViewHistoryRepository) Create(history *entity.ViewHistory) error {
 	return db.DB.Create(history).Error
