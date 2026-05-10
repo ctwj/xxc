@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"html"
 	"sort"
 	"strings"
 	"sync"
@@ -808,7 +809,8 @@ func (p *TelegramChannelSync) convertToHTML(text string) string {
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
 		if trimmed != "" {
-			htmlLines = append(htmlLines, fmt.Sprintf("<p>%s</p>", trimmed))
+			// 对文本内容进行 HTML 转义
+			htmlLines = append(htmlLines, fmt.Sprintf("<p>%s</p>", html.EscapeString(trimmed)))
 		}
 	}
 
@@ -868,13 +870,13 @@ func (p *TelegramChannelSync) convertToHTMLWithEntities(text string, entities []
 	lastPos := 0
 
 	for _, pos := range positions {
-		// 添加未格式化的文本
+		// 添加未格式化的文本（需要 HTML 转义）
 		if pos.offset > lastPos {
-			result.WriteString(string(runes[lastPos:pos.offset]))
+			result.WriteString(html.EscapeString(string(runes[lastPos:pos.offset])))
 		}
 
 		// 获取实体文本
-		entityText := string(runes[pos.offset : pos.offset+pos.length])
+		entityText := html.EscapeString(string(runes[pos.offset : pos.offset+pos.length]))
 
 		// 根据实体类型添加 HTML 标签
 		switch ent := pos.entity.(type) {
@@ -891,7 +893,8 @@ func (p *TelegramChannelSync) convertToHTMLWithEntities(text string, entities []
 		case *tg.MessageEntityPre:
 			result.WriteString(fmt.Sprintf("<pre><code>%s</code></pre>", entityText))
 		case *tg.MessageEntityTextURL:
-			result.WriteString(fmt.Sprintf("<a href=\"%s\">%s</a>", ent.URL, entityText))
+			// URL 需要转义属性值
+			result.WriteString(fmt.Sprintf("<a href=\"%s\">%s</a>", html.EscapeString(ent.URL), entityText))
 		case *tg.MessageEntityURL:
 			result.WriteString(fmt.Sprintf("<a href=\"%s\">%s</a>", entityText, entityText))
 		default:
@@ -901,9 +904,9 @@ func (p *TelegramChannelSync) convertToHTMLWithEntities(text string, entities []
 		lastPos = pos.offset + pos.length
 	}
 
-	// 添加剩余文本
+	// 添加剩余文本（需要 HTML 转义）
 	if lastPos < len(runes) {
-		result.WriteString(string(runes[lastPos:]))
+		result.WriteString(html.EscapeString(string(runes[lastPos:])))
 	}
 
 	// 按换行符分割并包装成段落
