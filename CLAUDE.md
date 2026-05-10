@@ -93,31 +93,32 @@ GORM handles migrations automatically.
 6. **Storage Drivers**: Supports local, S3, OSS, COS, FTP, B2 - configured via admin panel
 
 <!-- SPECKIT START -->
-## Active Feature: 修复 MySQL 数据库编码问题
+## Active Feature: 前端双平台部署 (Vercel + Cloudflare)
 
-**Branch**: `008-migrate-to-postgresql`
-**Plan**: [specs/008-migrate-to-postgresql/plan.md](specs/008-migrate-to-postgresql/plan.md)
+**Branch**: `009-dual-deploy-vercel-cloudflare`
+**Plan**: [specs/009-dual-deploy-vercel-cloudflare/plan.md](specs/009-dual-deploy-vercel-cloudflare/plan.md)
 **Status**: Planning Complete
 
 ### Key Documents
-- [Specification](specs/008-migrate-to-postgresql/spec.md)
-- [Research](specs/008-migrate-to-postgresql/research.md)
-- [Data Model](specs/008-migrate-to-postgresql/data-model.md)
-- [API Contracts](specs/008-migrate-to-postgresql/contracts/api.md)
-- [Quickstart](specs/008-migrate-to-postgresql/quickstart.md)
+- [Specification](specs/009-dual-deploy-vercel-cloudflare/spec.md)
+- [Research](specs/009-dual-deploy-vercel-cloudflare/research.md)
+- [Data Model](specs/009-dual-deploy-vercel-cloudflare/data-model.md)
+- [API Contracts](specs/009-dual-deploy-vercel-cloudflare/contracts/api.md)
+- [Quickstart](specs/009-dual-deploy-vercel-cloudflare/quickstart.md)
 
 ### Problem
-创建数据库时没有指定编码，GORM migrate 后不同表使用了不同的字符集/排序规则，导致编码错误。
+前端已部署到 Vercel，但 Vercel 免费额度有限（100GB 带宽/月），需要同时部署到 Cloudflare Pages 作为备用/分流。
 
-### Root Cause
-1. 创建数据库时未指定默认字符集和排序规则
-2. MySQL 服务器、数据库、表三层级字符集配置不一致
-3. GORM 实体定义中 TEXT 类型字段设置了无效的默认值
+### Platform Comparison
+| 特性 | Vercel | Cloudflare Pages |
+|------|--------|------------------|
+| 免费带宽 | 100GB/月 | **无限制** |
+| 构建时间 | **6000分钟/月** | 500分钟/月 |
+| 边缘节点 | 100+ | **300+** |
 
 ### Solution
-1. 配置 MySQL 服务器默认字符集（预防机制）
-2. 应用程序 DSN 指定连接字符集
-3. 批量转换现有数据库和表
-4. 修复 GORM 实体定义
+1. 在 Cloudflare Pages 创建项目并连接 GitHub
+2. 配置构建命令和环境变量
+3. 配置自定义域名
 <!-- SPECKIT END -->
 

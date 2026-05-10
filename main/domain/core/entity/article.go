@@ -28,6 +28,10 @@ func (ArticleBase) TableName() string {
 	return "article"
 }
 
+func (ArticleDetail) TableName() string {
+	return "article_detail"
+}
+
 func (a *ArticleBase) FullURL() string {
 	return config.Config.Site.GetURL() + a.URL()
 }
