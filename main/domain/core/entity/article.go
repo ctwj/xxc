@@ -57,7 +57,7 @@ type ArticleDetail struct {
 	Keywords    string     `gorm:"type:varchar(250);default:''"  json:"keywords"`
 	Content     string     `gorm:"type:string"                   json:"content"`
 	ContentType string     `gorm:"type:varchar(20);default:'html'" json:"content_type"` // html, markdown
-	MediaUrls   string     `gorm:"type:text;default:''"           json:"media_urls"`    // JSON array of media URLs
+	MediaUrls   string     `gorm:"type:text"                     json:"media_urls"`    // JSON array of media URLs
 	VideoUrl    string     `gorm:"type:varchar(250);default:''"  json:"video_url"`
 	CoverUrl    string     `gorm:"type:varchar(250);default:''"  json:"cover_url"`
 	Extends     vo.Extends `gorm:"type:string"                   json:"extends"`

@@ -93,28 +93,31 @@ GORM handles migrations automatically.
 6. **Storage Drivers**: Supports local, S3, OSS, COS, FTP, B2 - configured via admin panel
 
 <!-- SPECKIT START -->
-## Active Feature: 修复 TelegramSync 频道消息同步
+## Active Feature: 修复 MySQL 数据库编码问题
 
-**Branch**: `006-fix-telegram-channel-sync`
-**Plan**: [specs/006-fix-telegram-channel-sync/plan.md](specs/006-fix-telegram-channel-sync/plan.md)
+**Branch**: `008-migrate-to-postgresql`
+**Plan**: [specs/008-migrate-to-postgresql/plan.md](specs/008-migrate-to-postgresql/plan.md)
 **Status**: Planning Complete
 
 ### Key Documents
-- [Specification](specs/006-fix-telegram-channel-sync/spec.md)
-- [Research](specs/006-fix-telegram-channel-sync/research.md)
-- [Data Model](specs/006-fix-telegram-channel-sync/data-model.md)
-- [API Contracts](specs/006-fix-telegram-channel-sync/contracts/api.md)
-- [Quickstart](specs/006-fix-telegram-channel-sync/quickstart.md)
+- [Specification](specs/008-migrate-to-postgresql/spec.md)
+- [Research](specs/008-migrate-to-postgresql/research.md)
+- [Data Model](specs/008-migrate-to-postgresql/data-model.md)
+- [API Contracts](specs/008-migrate-to-postgresql/contracts/api.md)
+- [Quickstart](specs/008-migrate-to-postgresql/quickstart.md)
 
 ### Problem
-TelegramSync 插件在群组中正常工作，但绑定广播频道后不产生文章。
+创建数据库时没有指定编码，GORM migrate 后不同表使用了不同的字符集/排序规则，导致编码错误。
 
 ### Root Cause
-`updates.Manager` 缺少 `AccessHasher` 配置，导致 `UpdateNewChannelMessage` 被静默丢弃。群组消息走不同路径（不需要 access hash），所以正常。
+1. 创建数据库时未指定默认字符集和排序规则
+2. MySQL 服务器、数据库、表三层级字符集配置不一致
+3. GORM 实体定义中 TEXT 类型字段设置了无效的默认值
 
 ### Solution
-1. 实现自定义 `ChannelAccessHasher`，从频道配置中提供 access hash
-2. 配置到 `updates.Config.AccessHasher`
-3. 修复 `p.channels = enabledChannels` 覆盖 bug
+1. 配置 MySQL 服务器默认字符集（预防机制）
+2. 应用程序 DSN 指定连接字符集
+3. 批量转换现有数据库和表
+4. 修复 GORM 实体定义
 <!-- SPECKIT END -->
 
