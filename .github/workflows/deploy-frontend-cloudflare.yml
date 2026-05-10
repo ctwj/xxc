@@ -30,9 +30,16 @@ jobs:
         env:
           NEXT_PUBLIC_API_URL: ${{ secrets.API_URL }}
 
+      - name: Create Cloudflare Pages project if not exists
+        run: |
+          npx wrangler pages project create moss-frontend --production-branch main || echo "Project may already exist"
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy frontend/.next --project-name=moss-frontend
+          command: pages deploy frontend/.next --project-name=moss-frontend --commit-dirty=true
