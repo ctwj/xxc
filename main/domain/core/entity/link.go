@@ -12,3 +12,7 @@ type Link struct {
 	DetectDelay int64  `gorm:"type:int; default:0;"                      json:"detect_delay"` // 自动检验延时 （分钟）
 	Status      bool   `gorm:"type:boolean; default:false; index"        json:"status"`       // 状态 true:上链   false:下连
 }
+
+func (Link) TableName() string {
+	return "link"
+}

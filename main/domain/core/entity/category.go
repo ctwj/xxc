@@ -48,3 +48,7 @@ func (c *Category) CreateTimeFormat(layouts ...string) string {
 	}
 	return time.Unix(c.CreateTime, 0).Format(layout)
 }
+
+func (Category) TableName() string {
+	return "category"
+}

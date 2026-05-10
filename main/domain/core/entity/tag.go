@@ -47,3 +47,7 @@ func (t *Tag) CreateTimeFormat(layouts ...string) string {
 	}
 	return time.Unix(t.CreateTime, 0).Format(layout)
 }
+
+func (Tag) TableName() string {
+	return "tag"
+}

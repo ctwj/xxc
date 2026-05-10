@@ -5,3 +5,7 @@ type MappingTag struct {
 	ArticleID int `gorm:"type:int;size:32;uniqueIndex:idx_mapping_tag"       json:"article_id"`
 	TagID     int `gorm:"type:int;size:32;uniqueIndex:idx_mapping_tag;index" json:"tag_id"`
 }
+
+func (MappingTag) TableName() string {
+	return "mapping_tag"
+}

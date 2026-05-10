@@ -10,6 +10,10 @@ type Config struct {
 	Data string `gorm:"type:string;"`
 }
 
+func (Config) TableName() string {
+	return "config"
+}
+
 func init() {
 	if err := MigrateTable(); err != nil {
 		fmt.Println("migrate config table error: ", err.Error())
