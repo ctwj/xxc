@@ -93,32 +93,6 @@ GORM handles migrations automatically.
 6. **Storage Drivers**: Supports local, S3, OSS, COS, FTP, B2 - configured via admin panel
 
 <!-- SPECKIT START -->
-## Active Feature: 前端双平台部署 (Vercel + Cloudflare)
-
-**Branch**: `009-dual-deploy-vercel-cloudflare`
-**Plan**: [specs/009-dual-deploy-vercel-cloudflare/plan.md](specs/009-dual-deploy-vercel-cloudflare/plan.md)
-**Status**: Planning Complete
-
-### Key Documents
-- [Specification](specs/009-dual-deploy-vercel-cloudflare/spec.md)
-- [Research](specs/009-dual-deploy-vercel-cloudflare/research.md)
-- [Data Model](specs/009-dual-deploy-vercel-cloudflare/data-model.md)
-- [API Contracts](specs/009-dual-deploy-vercel-cloudflare/contracts/api.md)
-- [Quickstart](specs/009-dual-deploy-vercel-cloudflare/quickstart.md)
-
-### Problem
-前端已部署到 Vercel，但 Vercel 免费额度有限（100GB 带宽/月），需要同时部署到 Cloudflare Pages 作为备用/分流。
-
-### Platform Comparison
-| 特性 | Vercel | Cloudflare Pages |
-|------|--------|------------------|
-| 免费带宽 | 100GB/月 | **无限制** |
-| 构建时间 | **6000分钟/月** | 500分钟/月 |
-| 边缘节点 | 100+ | **300+** |
-
-### Solution
-1. 在 Cloudflare Pages 创建项目并连接 GitHub
-2. 配置构建命令和环境变量
-3. 配置自定义域名
+<!-- No active feature -->
 <!-- SPECKIT END -->
 
