@@ -383,8 +383,20 @@ func (p *TelegramChannelSync) handleChannelMessage(ctx context.Context, channelI
 		}
 	}
 
+	// 检查 ctx 是否有效
+	if p.ctx == nil {
+		fmt.Printf("=== [ERROR] p.ctx 为 nil，无法处理消息 ===\n")
+		return
+	}
+	if p.ctx.Log == nil {
+		fmt.Printf("=== [ERROR] p.ctx.Log 为 nil，无法处理消息 ===\n")
+		return
+	}
+
+	fmt.Printf("=== [DEBUG] 开始获取锁 ===\n")
 	// 重新解析频道配置（确保最新）
 	p.mu.Lock()
+	fmt.Printf("=== [DEBUG] 已获取锁 ===\n")
 	if err := p.parseChannels(); err != nil {
 		p.ctx.Log.Warn("解析频道配置失败", zap.Error(err))
 	}

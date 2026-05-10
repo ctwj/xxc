@@ -258,11 +258,9 @@ func (c *Client) handleNewChannelMessage(ctx context.Context, e tg.Entities, u *
 		zap.String("text", truncateMsgText(msg.Message, 50)))
 
 
-	// 忽略发出的消息
-	if msg.Out {
-		c.log.Debug("忽略发出的消息")
-		return nil
-	}
+	// 注意：在频道消息中，msg.Out 字段表示消息是否由频道管理员发布
+	// 而不是表示是否为当前用户发出的消息，因此不能用来过滤
+	// 频道消息都应该被处理
 
 	// 从消息实体中缓存频道的 access hash（供 updates.Manager 后续使用）
 	for _, ch := range e.Channels {
