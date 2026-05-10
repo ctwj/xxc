@@ -750,7 +750,7 @@ func (p *TelegramChannelSync) CreateArticle(channel *telegram_sync.TelegramChann
 
 	article := &entity.Article{
 		ArticleBase: entity.ArticleBase{
-			Slug:        fmt.Sprintf("tg-%d-%d", channel.ChannelID, time.Now().Unix()),
+			// 不设置 Slug，让 GenerateSlug 插件自动生成唯一 slug
 			Title:       title,
 			CreateTime:  time.Now().Unix(),
 			CategoryID:  channel.CategoryID,
