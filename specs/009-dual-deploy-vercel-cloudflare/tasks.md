@@ -31,7 +31,7 @@
 
 **⚠️ CRITICAL**: 必须完成此阶段才能进行用户故事实现
 
-- [x] T004 Cloudflare 使用 Git 集成部署（无需配置文件）
+- [x] T004 创建 GitHub Actions 部署脚本 .github/workflows/deploy-frontend-cloudflare.yml
 - [x] T005 更新 .gitignore 添加 Cloudflare 相关忽略项
 
 **Checkpoint**: Cloudflare 配置文件就绪，可以开始 Cloudflare Pages 项目创建
