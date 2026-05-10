@@ -101,7 +101,7 @@ func (h *MediaHandler) extractPhotoMetadata(photo *tg.MessageMediaPhoto, channel
 	}
 
 	// 返回媒体 API URL 而不是直接下载
-	mediaURL := fmt.Sprintf("/admin/api/telegram/media/%d", p.ID)
+	mediaURL := fmt.Sprintf("/api/telegram/media/%d", p.ID)
 
 	h.log.Info("提取图片元数据成功",
 		zap.Int64("photo_id", p.ID),
@@ -185,7 +185,7 @@ func (h *MediaHandler) extractDocumentMetadata(doc *tg.MessageMediaDocument, cha
 			thumbID = d.ID
 			thumbAccessHash = d.AccessHash
 			thumbFileRef = d.FileReference
-			thumbURL = fmt.Sprintf("/admin/api/telegram/media/%d?thumb=1", d.ID)
+			thumbURL = fmt.Sprintf("/api/telegram/media/%d?thumb=1", d.ID)
 			h.log.Info("找到视频封面缩略图",
 				zap.Int64("doc_id", d.ID),
 				zap.Int("width", largestW),
