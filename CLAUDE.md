@@ -93,28 +93,32 @@ GORM handles migrations automatically.
 6. **Storage Drivers**: Supports local, S3, OSS, COS, FTP, B2 - configured via admin panel
 
 <!-- SPECKIT START -->
-## Active Feature: 修复 TelegramSync 频道消息同步
+## Active Feature: 前端双平台部署 (Vercel + Cloudflare)
 
-**Branch**: `006-fix-telegram-channel-sync`
-**Plan**: [specs/006-fix-telegram-channel-sync/plan.md](specs/006-fix-telegram-channel-sync/plan.md)
+**Branch**: `009-dual-deploy-vercel-cloudflare`
+**Plan**: [specs/009-dual-deploy-vercel-cloudflare/plan.md](specs/009-dual-deploy-vercel-cloudflare/plan.md)
 **Status**: Planning Complete
 
 ### Key Documents
-- [Specification](specs/006-fix-telegram-channel-sync/spec.md)
-- [Research](specs/006-fix-telegram-channel-sync/research.md)
-- [Data Model](specs/006-fix-telegram-channel-sync/data-model.md)
-- [API Contracts](specs/006-fix-telegram-channel-sync/contracts/api.md)
-- [Quickstart](specs/006-fix-telegram-channel-sync/quickstart.md)
+- [Specification](specs/009-dual-deploy-vercel-cloudflare/spec.md)
+- [Research](specs/009-dual-deploy-vercel-cloudflare/research.md)
+- [Data Model](specs/009-dual-deploy-vercel-cloudflare/data-model.md)
+- [API Contracts](specs/009-dual-deploy-vercel-cloudflare/contracts/api.md)
+- [Quickstart](specs/009-dual-deploy-vercel-cloudflare/quickstart.md)
 
 ### Problem
-TelegramSync 插件在群组中正常工作，但绑定广播频道后不产生文章。
+前端已部署到 Vercel，但 Vercel 免费额度有限（100GB 带宽/月），需要同时部署到 Cloudflare Pages 作为备用/分流。
 
-### Root Cause
-`updates.Manager` 缺少 `AccessHasher` 配置，导致 `UpdateNewChannelMessage` 被静默丢弃。群组消息走不同路径（不需要 access hash），所以正常。
+### Platform Comparison
+| 特性 | Vercel | Cloudflare Pages |
+|------|--------|------------------|
+| 免费带宽 | 100GB/月 | **无限制** |
+| 构建时间 | **6000分钟/月** | 500分钟/月 |
+| 边缘节点 | 100+ | **300+** |
 
 ### Solution
-1. 实现自定义 `ChannelAccessHasher`，从频道配置中提供 access hash
-2. 配置到 `updates.Config.AccessHasher`
-3. 修复 `p.channels = enabledChannels` 覆盖 bug
+1. 在 Cloudflare Pages 创建项目并连接 GitHub
+2. 配置构建命令和环境变量
+3. 配置自定义域名
 <!-- SPECKIT END -->
 

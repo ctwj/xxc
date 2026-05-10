@@ -26,3 +26,7 @@ type Store struct {
 	CategoryName string         `gorm:"type:varchar(250);default:''"  json:"category_name"` // 直接通过分类名创建，优先级小于category_id
 	CreateTime   int64          `gorm:"type:int;size:32"              json:"create_time"`
 }
+
+func (Store) TableName() string {
+	return "store"
+}

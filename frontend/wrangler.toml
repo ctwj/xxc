@@ -1,0 +1,14 @@
+# Cloudflare Pages configuration for Next.js
+name = "moss-frontend"
+compatibility_date = "2024-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+[build]
+command = "pnpm build"
+
+[build.environment]
+NODE_VERSION = "18"
+PNPM_VERSION = "8"
+
+# Note: For Next.js on Cloudflare Pages, use @cloudflare/next-on-pages
+# The output will be handled by Cloudflare's Next.js adapter
