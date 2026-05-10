@@ -31,9 +31,8 @@
 
 **⚠️ CRITICAL**: 必须完成此阶段才能进行用户故事实现
 
-- [x] T004 创建 wrangler.toml 配置文件在 frontend/wrangler.toml
+- [x] T004 创建 GitHub Actions 部署脚本 .github/workflows/deploy-frontend-cloudflare.yml
 - [x] T005 更新 .gitignore 添加 Cloudflare 相关忽略项
-- [x] T005b 创建 GitHub Actions 部署脚本 .github/workflows/deploy-frontend-cloudflare.yml
 
 **Checkpoint**: Cloudflare 配置文件就绪，可以开始 Cloudflare Pages 项目创建
 
@@ -47,7 +46,7 @@
 
 ### Implementation for User Story 1
 
-- [ ] T006 [US1] 在 Cloudflare Dashboard 创建 Pages 项目（手动操作）
+- [ ] T006 [US1] 在 Cloudflare Dashboard 创建 Pages 项目（手动操作 - Git 集成）
 - [ ] T007 [US1] 连接 GitHub 仓库 ctwj/xxc 到 Cloudflare Pages（手动操作）
 - [ ] T008 [US1] 配置构建设置：Build command = `cd frontend && pnpm build`，Output directory = `frontend/.next`
 - [ ] T009 [US1] 配置 Node.js 版本为 18
