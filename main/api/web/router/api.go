@@ -17,6 +17,9 @@ func RegisterAPIRoutes(app fiber.Router) {
 	api.Get("/tags", controller.APITagList)
 	api.Get("/search", controller.APISearch)
 
+	// Telegram media - publicly accessible (no auth required)
+	api.Get("/telegram/media/:mediaId", controller.TelegramGetMedia)
+
 	// Auth APIs
 	auth := api.Group("/auth")
 	auth.Post("/login", controller.AuthLogin)

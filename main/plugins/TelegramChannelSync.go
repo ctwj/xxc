@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -974,11 +975,20 @@ func (p *TelegramChannelSync) GetRecentLogs(limit int) (interface{}, error) {
 
 // truncateDescription 截断描述（按字符截断，避免破坏 UTF-8 编码）
 func truncateDescription(content string, maxLen int) string {
+	content = stripHTMLTags(content)
 	runes := []rune(content)
 	if len(runes) <= maxLen {
 		return content
 	}
 	return string(runes[:maxLen]) + "..."
+}
+
+// stripHTMLTags 去除字符串中的 HTML 标签
+var htmlTagRe = regexp.MustCompile(`<[^>]*>`)
+
+func stripHTMLTags(s string) string {
+	s = htmlTagRe.ReplaceAllString(s, "")
+	return strings.TrimSpace(s)
 }
 
 // GetChannelByID 根据频道 ID 获取频道配置

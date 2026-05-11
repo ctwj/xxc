@@ -1,6 +1,9 @@
 package controller
 
 import (
+	"regexp"
+	"strings"
+
 	"github.com/gofiber/fiber/v2"
 	"moss/domain/config"
 	coreCtx "moss/domain/core/repository/context"
@@ -8,6 +11,14 @@ import (
 	"moss/domain/core/service"
 	"moss/infrastructure/support/log"
 )
+
+// stripHTMLTags removes HTML tags from a string
+var htmlTagRe = regexp.MustCompile(`<[^>]*>`)
+
+func stripHTMLTags(s string) string {
+	s = htmlTagRe.ReplaceAllString(s, "")
+	return strings.TrimSpace(s)
+}
 
 // APIArticleList returns a list of articles for the frontend API
 func APIArticleList(c *fiber.Ctx) error {
@@ -80,7 +91,7 @@ func APIArticleList(c *fiber.Ctx) error {
 			"id":          item.ID,
 			"slug":        item.Slug,
 			"title":       item.Title,
-			"description": item.Description,
+			"description": stripHTMLTags(item.Description),
 			"thumbnail":   item.Thumbnail,
 			"views":       item.Views,
 			"createTime":  item.CreateTime,
@@ -157,7 +168,7 @@ func APIArticleDetail(c *fiber.Ctx) error {
 		"slug":        article.Slug,
 		"title":       article.Title,
 		"content":     article.Content,
-		"description": article.Description,
+		"description": stripHTMLTags(article.Description),
 		"thumbnail":   article.Thumbnail,
 		"keywords":    article.Keywords,
 		"views":       article.Views,

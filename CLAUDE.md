@@ -93,6 +93,6 @@ GORM handles migrations automatically.
 6. **Storage Drivers**: Supports local, S3, OSS, COS, FTP, B2 - configured via admin panel
 
 <!-- SPECKIT START -->
-<!-- No active feature -->
+Active feature: [Fix Content Display Issues](specs/009-fix-content-display/plan.md)
 <!-- SPECKIT END -->
 
